@@ -1,0 +1,134 @@
+# ==================== API Keys & Secrets ====================
+# 各种 API Key 配置文件
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+
+# 阿里云/DashScope API Key
+*.ak
+*.sk
+aliyun-*
+dashscope-*
+
+# OpenAI API Key
+openai-*
+openai.key
+
+# 其他 API Key 模式
+*api*key*
+*api*secret*
+*access*key*
+*access*secret*
+*secret*key*
+
+# 密钥文件
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+
+# JWT 密钥
+jwt-secret*
+jwt.key
+
+# 数据库密码配置文件
+application.yaml
+application-*.yaml
+application.properties
+application-*.properties
+!application-example.yaml
+!application-example.properties
+
+# ==================== Build & Dependencies ====================
+# Java
+target/
+*.jar
+*.war
+*.ear
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# Node.js
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ==================== IDE & Editor ====================
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+
+# Eclipse/STS
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/nbdist/
+/.nb-gradle/
+
+# ==================== Logs ====================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ==================== OS Files ====================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ==================== Misc ====================
+HELP.md
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

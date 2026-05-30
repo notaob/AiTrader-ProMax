@@ -1,0 +1,247 @@
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+import time
+
+from app.models import ChatRequest, ChatResponse, RAGRequest, RAGResponse, GraphExecuteRequest
+from app.graph.trading_graph import trading_graph
+from app.config import config
+from app.rag.rag_service import rag_service
+from app.rag.document_processor import document_processor
+from app.context.context_builder import build_prompt
+from app.memory.memory_service import extract_memory_from_dialogue
+from langchain_core.messages import HumanMessage
+
+app = FastAPI(
+    title="AI Agent Service (LangGraph)",
+    description="基于 LangGraph 的 AI Agent 服务 - HTTP 模式获取市场数据",
+    version="1.1.0"
+)
+
+# CORS 配置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.post("/agent/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """
+    ReAct 模式对话 - 使用 LangGraph 实现
+    支持 state、summaries、memories 和 knowledge_chunks 上下文管理
+    """
+    try:
+        start_time = time.time()
+
+        # 使用 context_builder 组装完整 prompt
+        recent_messages = request.history or []
+        system_prompt = build_prompt(
+            state=request.state,
+            recent_messages=recent_messages,
+            summaries=request.summaries or [],
+            memories=request.memories or [],
+            knowledge_chunks=request.knowledge_chunks or [],
+            current_message=request.message,
+            mode=request.mode or "chat"
+        )
+
+        # 构建消息历史
+        messages = []
+
+        # 添加历史消息
+        for msg in request.history or []:
+            if msg.get("role") == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            elif msg.get("role") == "assistant":
+                from langchain_core.messages import AIMessage
+                messages.append(AIMessage(content=msg["content"]))
+
+        # 添加当前消息
+        messages.append(HumanMessage(content=request.message))
+
+        # 调用 LangGraph
+        result = await trading_graph.ainvoke({
+            "messages": messages,
+            "user_id": request.user_id,
+            "session_id": request.session_id or "default",
+            "intermediate_steps": [],
+            "mode": request.mode or "chat",
+            "context": {
+                "state": request.state,
+                "summaries": request.summaries,
+                "memories": request.memories,
+                "knowledge_chunks": request.knowledge_chunks,
+                "system_prompt": system_prompt
+            }
+        })
+
+        execution_time = int((time.time() - start_time) * 1000)
+
+        # 提取最终回答
+        final_message = result["messages"][-1]
+        answer = final_message.content if hasattr(final_message, 'content') else str(final_message)
+
+        # 从对话中提取记忆候选
+        memory_candidates = extract_memory_from_dialogue(request.message, answer)
+        memory_candidate_texts = [cand["text"] for cand in memory_candidates]
+
+        return ChatResponse(
+            success=True,
+            answer=answer,
+            thought_process=result.get("intermediate_steps", []),
+            execution_time=execution_time,
+            memory_candidates=memory_candidate_texts
+        )
+    except Exception as e:
+        import traceback
+        error_msg = f"Error: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/agent/rag", response_model=RAGResponse)
+async def rag_chat(request: RAGRequest):
+    """
+    RAG 模式对话 - Python 端实现
+    """
+    try:
+        start_time = time.time()
+        
+        # 调用 Python RAG 服务
+        result = rag_service.query(request.question, request.top_k)
+        
+        execution_time = int((time.time() - start_time) * 1000)
+        
+        return RAGResponse(
+            success=result["success"],
+            answer=result["answer"],
+            sources=result["sources"],
+            retrieved_documents=result["retrieved_documents"],
+            execution_time=execution_time
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/rag/add-text")
+async def add_text_to_knowledge_base(text: str, source: str = "user"):
+    """
+    添加文本到知识库
+    """
+    try:
+        count = document_processor.process_text(text, source)
+        return {
+            "success": True,
+            "message": f"成功添加 {count} 个文档片段",
+            "chunks": count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/rag/upload")
+async def upload_file_to_knowledge_base(file: UploadFile = File(...)):
+    """
+    上传文件到知识库（支持 txt, md）
+    """
+    try:
+        content = await file.read()
+        text = content.decode("utf-8")
+        
+        count = document_processor.process_text(text, file.filename)
+        return {
+            "success": True,
+            "message": f"成功处理文件 {file.filename}，添加 {count} 个文档片段",
+            "chunks": count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/rag/stats")
+async def get_knowledge_base_stats():
+    """
+    获取知识库统计
+    """
+    try:
+        stats = rag_service.get_stats()
+        return {
+            "success": True,
+            "document_count": stats["document_count"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/rag/clear")
+async def clear_knowledge_base():
+    """
+    清空知识库
+    """
+    try:
+        success = rag_service.clear_knowledge_base()
+        return {
+            "success": success,
+            "message": "知识库已清空" if success else "清空失败"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/agent/execute")
+async def execute_graph(request: GraphExecuteRequest):
+    """
+    通用图执行接口 - 供 Java 后端灵活调用
+    """
+    try:
+        if request.graph_type == "trading":
+            result = await trading_graph.ainvoke(request.inputs)
+            return {
+                "success": True,
+                "result": result
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"未知的图类型: {request.graph_type}"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/health")
+async def health_check():
+    """健康检查"""
+    return {
+        "status": "healthy",
+        "service": "ai-agent-langgraph",
+        "version": "1.0.0",
+        "llm": config.DASHSCOPE_MODEL
+    }
+
+
+@app.get("/tools")
+async def list_tools():
+    """列出可用工具"""
+    from app.tools.market_tools import market_tools
+    from app.tools.analysis_tools import analysis_tools
+    from app.tools.rag_tools import rag_tools
+    
+    all_tools = market_tools + analysis_tools + rag_tools
+    return {
+        "tools": [
+            {
+                "name": tool.name,
+                "description": tool.description
+            }
+            for tool in all_tools
+        ]
+    }
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=config.PORT)
