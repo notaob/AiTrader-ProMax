@@ -45,6 +45,25 @@ application-*.properties
 !application-example.yaml
 !application-example.properties
 
+# ==================== Personal Files ====================
+# 简历文件（包含个人信息）
+resume.html
+resume.md
+
+# ==================== Uploads ====================
+# 用户上传文件（头像、图片等）
+upload/
+**/upload/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.webp
+*.svg
+!**/src/**/assets/**/*.svg
+!**/public/**/*.svg
+
 # ==================== Build & Dependencies ====================
 # Java
 target/
