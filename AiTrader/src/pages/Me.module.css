@@ -1,0 +1,152 @@
+.container {
+  padding: 20px;
+  color: #fff;
+  padding-bottom: 80px;
+}
+
+/* 
+  HTML 知识点：
+  这里对应 <header> 标签。
+  CSS 知识点 - Flexbox 布局：
+  display: flex; 让子元素横向排列
+  align-items: center; 让子元素垂直居中对齐
+*/
+.header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.avatarWrapper {
+  margin-right: 15px; /* 右边距，把文字推开 */
+}
+
+.nicknameWrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  margin-left: -8px; /* 抵消 padding 带来的左移 */
+}
+
+.nicknameWrapper:hover {
+  /*      background: rgba(76, 175, 80, 0.1); /* 浅绿色背景 */
+  box-shadow: 0 0 0 1px rgba(76, 175, 80, 0.5); /* 绿色光环 */
+}
+
+.userInfo h2 {
+  margin: 0;
+}
+
+.userInfo p {
+  margin: 5px 0 0;
+  color: #888;
+}
+
+/* 
+  CSS 知识点 - 盒模型 (Box Model)：
+  padding: 内部空间
+  margin: 外部间距
+  border-radius: 圆角
+*/
+
+.assetLabel {
+  background: #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  padding: 15px 20px;
+}
+/* 
+  HTML 知识点：对应 <ul> 和 <li>
+  list-style: none; 去掉列表前面的小圆点
+*/
+.menuList {
+  background: #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 20px;
+  padding: 0;
+  list-style: none; 
+}
+
+.menuItem {
+  padding: 15px 20px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between; /* 一左一右 */
+  align-items: center; /* 垂直居中 */
+  cursor: pointer;
+}
+
+.menuItem:last-child {
+  border-bottom: none; /* 最后一项不要底边框 */
+}
+
+.menuItemLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.menuIcon {
+  color: #888;
+}
+
+.arrow {
+  color: #888;
+}
+
+.loginButton {
+  background: none;
+  border: 1px solid #4CAF50;
+  color: #4CAF50;
+  /* 
+    padding 简写规则：
+    1个值: 上下左右全部 (padding: 10px)
+    2个值: 上下 | 左右   (padding: 5px 15px) -> 这里就是：上下5px，左右15px
+    4个值: 上 | 右 | 下 | 左 (顺时针方向)
+  */
+  padding: 5px 15px;
+  border-radius: 20px;
+  /* 
+    cursor: pointer;
+    当鼠标悬停在这个元素上时，鼠标光标会变成“小手”形状。
+    通常用于告诉用户：“这东西是可以点击的”（如按钮、链接）。
+  */
+  cursor: pointer;
+
+  /* 
+    font-size: 14px;
+    设置字体大小为 14 像素。
+    如果不设置，浏览器默认通常是 16px。
+  */
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.loginButton:hover {
+  background-color: rgba(76, 175, 80, 0.1);
+  box-shadow: 0 0 0 3px #4CAF50;
+}
+
+.logoutButton {
+  width: 100%;
+  padding: 15px;
+  background: #f44336;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.3s; /* 简单的过渡动画 */
+}
+
+/* 伪类选择器：鼠标悬停时的状态 */
+.logoutButton:hover {
+  background: #d32f2f;
+}

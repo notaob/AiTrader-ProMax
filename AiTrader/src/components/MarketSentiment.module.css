@@ -1,0 +1,35 @@
+.container {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.card {
+  background: #1e1e1e;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.label {
+  color: #888;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.value {
+  font-weight: bold;
+}
+
+.buy {
+  color: #4CAF50;
+}
+
+.sell {
+  color: #f44336;
+}
+
+.neutral {
+  color: #FFC107;
+}

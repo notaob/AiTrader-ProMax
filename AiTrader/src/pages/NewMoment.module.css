@@ -1,0 +1,80 @@
+.container {
+  padding: 20px;
+  color: #fff;
+  min-height: 100vh;
+  background: #121212;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+
+.backButton {
+  cursor: pointer;
+  color: #888;
+  transition: color 0.3s;
+}
+
+.backButton:hover {
+  color: #fff;
+}
+
+.publishButton {
+  background: #4CAF50;
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.publishButton:disabled {
+  background: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.editorArea {
+  background: #1e1e1e;
+  border-radius: 12px;
+  padding: 20px;
+  min-height: 200px;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 150px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+}
+
+.toolbar {
+  display: flex;
+  gap: 20px;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #333;
+}
+
+.toolItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #888;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.toolItem:hover {
+  color: #4CAF50;
+}

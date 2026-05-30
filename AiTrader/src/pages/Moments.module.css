@@ -1,0 +1,104 @@
+.container {
+  padding: 20px;
+  color: #fff;
+  padding-bottom: 80px;
+  /* 为底部导航留出空间 */
+}
+
+.header {
+  display: flex;
+  margin-bottom: 20px;
+}
+
+.postCard {
+  background: #1e1e1e;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  transition: transform 0.2s;
+}
+
+.postCard:hover {
+  transform: translateY(-2px);
+  /* 鼠标悬停微微上浮 */
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.userAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin-right: 12px;
+  object-fit: cover;
+}
+
+.userName {
+  font-weight: bold;
+  font-size: 16px;
+  margin-bottom: 2px;
+}
+
+.postTime {
+  font-size: 12px;
+  color: #888;
+}
+
+.content {
+  line-height: 1.6;
+  color: #ddd;
+  margin-bottom: 15px;
+  font-size: 15px;
+}
+
+.actions {
+  display: flex;
+  gap: 25px;
+  border-top: 1px solid #333;
+  padding-top: 15px;
+}
+
+.actionItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #888;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.actionItem:hover {
+  color: #fff;
+}
+
+/* 点赞激活状态 */
+.liked {
+  color: #f44336;
+  /* 红色 */
+}
+
+.liked:hover {
+  color: #d32f2f;
+}
+
+.addMomentButton {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid #4CAF50;
+  background-color: transparent;
+  color: #4CAF50;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-left: auto; /* 自动推到最右边 */
+}
+
+.addMomentButton:hover {
+  background-color: rgba(76, 175, 80, 0.1);
+  box-shadow: 0 0 0 3px #4CAF50;
+}

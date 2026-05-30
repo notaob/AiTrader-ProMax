@@ -1,0 +1,83 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: #121212;
+}
+
+#root {
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.app-container {
+  min-height: 100vh;
+  width: 100%;
+}
+
+.main-content {
+  padding: 40px;
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 40px;
+  align-items: stretch; /* 恢复 stretch，让左右两侧等高 */
+}
+
+.chat-section {
+  height: 0; /* 关键修复：Grid 子项必须设置 height: 0 或 min-height: 0 才能让内部的 100% 生效而不撑开 */
+  min-height: 100%; /* 让它填满 Grid 行高 */
+  overflow: hidden; /* 防止内部内容溢出 */
+  flex-direction: column;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  header {
+    padding: 15px 20px !important;
+    /* flex-direction: column; */ /* 取消纵向排列 */
+    /* align-items: flex-start !important; */
+    align-items: center !important; /* 保持垂直居中 */
+    justify-content: space-between !important; /* 保持两端对齐 */
+    gap: 10px;
+  }
+  
+  header h1 {
+    font-size: 18px !important; /* 稍微缩小字号以防止挤压 */
+  }
+  
+  .main-content {
+    padding: 20px;
+    grid-template-columns: 1fr; /* 变成单列布局 */
+    gap: 30px;
+  }
+  
+  /* 调整图表下方信号区的布局 */
+  .chart-section > div {
+    grid-template-columns: repeat(3, 1fr); 
+    gap: 10px !important;
+  }
+  
+  .chat-section {
+    height: 400px; /* 移动端限制高度 */
+  }
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}

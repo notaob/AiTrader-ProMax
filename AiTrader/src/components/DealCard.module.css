@@ -1,0 +1,44 @@
+.card {
+  margin-top: 20px;
+  background: #1e1e1e;
+  padding: 20px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.17em;
+  font-weight: bold;
+}
+
+.description {
+  color: #888;
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+.button {
+  margin-top: 15px; /* In flex row layout this might need adjustment, but keeping original logic */
+  color: white;
+  border: none;
+  /* Fixed size approach */
+  width: 100px;
+  height: 36px;
+  /* Flex centering for content */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  /* Prevent text wrapping */
+  white-space: nowrap;
+}
+
+/* Adjust button margin for flex layout if needed, though original had margin-top */
+.card .button {
+  margin-top: 0; /* Override margin-top when in flex row */
+}

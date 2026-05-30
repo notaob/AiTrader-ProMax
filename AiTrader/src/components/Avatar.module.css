@@ -1,0 +1,43 @@
+.container {
+  position: relative;
+  display: inline-block;
+  border-radius: 50%;
+  transition: box-shadow 0.3s ease;
+}
+
+.container:hover {
+  box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.5);
+}
+
+.image {
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.placeholder {
+  background: #4CAF50;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+}
+
+.cameraIcon {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background: #4CAF50;
+  border-radius: 50%;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #121212; /* 增加一点边框，让它与背景区分开 */
+}
+
+.fileInput {
+  display: none;
+}

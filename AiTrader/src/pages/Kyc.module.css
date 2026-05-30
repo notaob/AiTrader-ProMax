@@ -1,0 +1,94 @@
+.container {
+  padding: 20px;
+  color: #fff;
+  min-height: 100vh;
+  background: #121212;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.backButton {
+  cursor: pointer;
+  margin-right: 15px;
+  color: #888;
+  transition: color 0.3s;
+}
+
+.backButton:hover {
+  color: #fff;
+}
+
+.form {
+  background: #1e1e1e;
+  padding: 20px;
+  border-radius: 12px;
+}
+
+.formGroup {
+  margin-bottom: 20px;
+}
+
+.label {
+  display: block;
+  margin-bottom: 8px;
+  color: #888;
+  font-size: 14px;
+}
+
+.input {
+  width: 100%;
+  padding: 12px;
+  background: #2c2c2c;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.3s;
+  box-sizing: border-box; /* 确保 padding 不会撑大宽度 */
+}
+
+.input:focus {
+  border-color: #4CAF50;
+}
+
+.submitButton {
+  width: 100%;
+  padding: 14px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: background 0.3s;
+}
+
+.submitButton:hover {
+  background: #45a049;
+}
+
+.statusCard {
+  background: #1e1e1e;
+  padding: 30px;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.verifiedIcon {
+  width: 60px;
+  height: 60px;
+  background: rgba(76, 175, 80, 0.1);
+  color: #4CAF50;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 15px;
+}

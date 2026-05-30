@@ -1,0 +1,211 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  width: 100%; /* 确保占满宽度 */
+  padding: 20px;
+  background-color: #121212;
+  color: #fff;
+  box-sizing: border-box; /* 防止 padding 撑大宽度 */
+}
+
+.title {
+  font-size: 24px;
+  margin-bottom: 30px;
+  font-weight: bold;
+}
+
+.form {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  font-size: 14px;
+  color: #888;
+}
+
+.input {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #1e1e1e;
+  color: #fff;
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.input:focus {
+  border-color: #4CAF50;
+}
+
+.button {
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  background: #4CAF50;
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: opacity 0.2s;
+}
+
+.button:hover {
+  opacity: 0.9;
+}
+
+.links {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+  font-size: 14px;
+}
+
+.codeInputWrapper {
+  display: flex;
+  gap: 10px;
+}
+
+.codeButton {
+  padding: 0 15px;
+  border-radius: 8px;
+  border: 1px solid #4CAF50;
+  background: transparent;
+  color: #4CAF50;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.codeButton:disabled {
+  border-color: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.codeButton:not(:disabled):hover {
+  background: rgba(76, 175, 80, 0.1);
+}
+
+/* 顶部 Tab 切换样式 */
+.tabs {
+  display: flex;
+  gap: 30px;
+  margin-bottom: 25px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 12px;
+  width: 100%;
+  justify-content: center; /* 居中显示 */
+}
+
+.tab {
+  cursor: pointer;
+  color: #888;
+  font-size: 16px;
+  position: relative;
+  padding-bottom: 5px;
+  transition: all 0.2s ease;
+}
+
+.tabActive {
+  color: #4CAF50;
+  font-weight: 600;
+}
+
+.tabActive::after {
+  content: '';
+  position: absolute;
+  bottom: -13px; /* 对齐到 border-bottom 上 */
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: #4CAF50;
+  border-radius: 2px;
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* 动画相关 */
+.fadeEnter {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.fadeEnterActive {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 300ms, transform 300ms;
+}
+
+.fadeExit {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.fadeExitActive {
+  opacity: 0;
+  transform: translateX(20px);
+  transition: opacity 300ms, transform 300ms;
+}
+
+.tabContent {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.link {
+  color: #888;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  position: relative;
+}
+
+.link:hover {
+  color: #4CAF50;
+}
+
+/* Modal specific overrides */
+.modalContainer {
+  min-height: auto;
+  padding: 0;
+  background: transparent;
+}
+
+.modalTitle {
+  margin-top: 0;
+}
+
+.flexInput {
+  flex: 1;
+}
