@@ -6,7 +6,7 @@ import { authService } from '../services/auth';
 export const ForgotPassword = () => {
   const { openAuthModal } = useAuth();
   const [countdown, setCountdown] = useState(0);
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState<1 | 2>(1);
   const [password, setPassword] = useState('');
@@ -23,18 +23,18 @@ export const ForgotPassword = () => {
   }, [countdown]);
 
   const sendCode = async () => {
-    if (!phone) {
-      alert('请输入手机号');
+    if (!email) {
+      alert('请输入邮箱');
       return;
     }
-    if (!/^1\d{10}$/.test(phone)) {
-      alert('请输入有效的手机号');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      alert('请输入有效的邮箱地址');
       return;
     }
-    
+
     try {
-      const code = await authService.sendCode(phone);
-      alert(`验证码已发送: ${code}`);
+      await authService.sendCode(email);
+      alert(`验证码已发送到邮箱`);
       setCountdown(60);
     } catch (error) {
       console.error(error);
@@ -48,8 +48,6 @@ export const ForgotPassword = () => {
       alert('请输入有效的6位验证码');
       return;
     }
-    // 前端简单校验通过，进入第二步设置密码
-    // 注意：实际验证码校验通常在最后提交时由后端统一处理，或者这里可以调一个 verifyCode 接口
     setStep(2);
   };
 
@@ -59,9 +57,9 @@ export const ForgotPassword = () => {
       alert('两次输入的密码不一致，请重新输入');
       return;
     }
-    
+
     try {
-      await authService.resetPassword(phone, code, password);
+      await authService.resetPassword(email, code, password);
       alert('密码重置成功，请重新登录');
       openAuthModal('login');
     } catch (error) {
@@ -82,27 +80,26 @@ export const ForgotPassword = () => {
         step === 1 ? (
         <form className={`${styles.form} ${styles.tabContent}`} key="step1" onSubmit={handleNextStep}>
           <div className={styles.inputGroup}>
-            <label className={styles.label}>手机号码</label>
+            <label className={styles.label}>邮箱地址</label>
             <input
-              type="tel"
+              type="email"
               className={styles.input}
-              placeholder="请输入手机号"
+              placeholder="请输入邮箱"
               required
-              pattern="[0-9]*"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </div>
 
           <div className={styles.inputGroup}>
             <label className={styles.label}>验证码</label>
             <div className={styles.codeInputWrapper}>
-              <input 
-                type="text" 
-                className={styles.input} 
-                placeholder="6位数字" 
-                required 
-                style={{ flex: 1 }} 
+              <input
+                type="text"
+                className={styles.input}
+                placeholder="6位数字"
+                required
+                style={{ flex: 1 }}
                 maxLength={6}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -123,11 +120,11 @@ export const ForgotPassword = () => {
         <form className={`${styles.form} ${styles.tabContent}`} key="step2" onSubmit={handleSubmit}>
           <div className={styles.inputGroup}>
             <label className={styles.label}>新密码</label>
-            <input 
-              type="password" 
-              className={styles.input} 
-              placeholder="设置新密码 (至少6位)" 
-              required 
+            <input
+              type="password"
+              className={styles.input}
+              placeholder="设置新密码 (至少6位)"
+              required
               minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -136,11 +133,11 @@ export const ForgotPassword = () => {
 
           <div className={styles.inputGroup}>
             <label className={styles.label}>确认新密码</label>
-            <input 
-              type="password" 
-              className={styles.input} 
-              placeholder="请再次输入新密码" 
-              required 
+            <input
+              type="password"
+              className={styles.input}
+              placeholder="请再次输入新密码"
+              required
               minLength={6}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
@@ -148,9 +145,9 @@ export const ForgotPassword = () => {
           </div>
 
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-            <button 
-              type="button" 
-              className={styles.button} 
+            <button
+              type="button"
+              className={styles.button}
               style={{ background: '#333', color: '#ccc' }}
               onClick={() => setStep(1)}
             >

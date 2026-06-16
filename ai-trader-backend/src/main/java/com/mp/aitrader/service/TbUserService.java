@@ -15,9 +15,9 @@ import org.springframework.web.multipart.MultipartFile;
 */
 public interface TbUserService extends IService<TbUser> {
 
-    Result<String> sendCode(String phone);
+    Result<String> sendCode(String email);
 
-    Result<LoginVO> smsLogin(LoginDTO loginDTO);
+    Result<LoginVO> codeLogin(LoginDTO loginDTO);
 
     Result<LoginVO> passwordLogin(LoginDTO loginDTO);
 

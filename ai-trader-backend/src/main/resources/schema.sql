@@ -42,7 +42,8 @@ create table if not exists tb_user
 (
     id          bigint auto_increment comment '主键'
         primary key,
-    phone       varchar(20)                       not null comment '手机号码',
+    phone       varchar(20)                       null comment '手机号码',
+    email       varchar(100)                      null comment '邮箱地址',
     password    varchar(255)                      null comment '密码，加密存储',
     nick_name   varchar(50)                       null comment '昵称，默认是用户id',
     icon        varchar(255)                      null comment '人物头像',
@@ -54,7 +55,9 @@ create table if not exists tb_user
     ai_chance   int            default 0          null comment 'AI交易机会',
     point       int            default 0          null comment '积分',
     constraint idx_phone
-        unique (phone)
+        unique (phone),
+    constraint idx_email
+        unique (email)
 )
     comment '用户表';
 

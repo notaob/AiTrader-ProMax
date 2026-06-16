@@ -26,7 +26,7 @@ export const Avatar = ({
   const getImageUrl = (path?: string) => {
     if (!path) return null;
     if (path.startsWith('http') || path.startsWith('blob:')) return path;
-    return `http://localhost:8080${path}`;
+    return `/api${path}`;
   };
 
   const imageSrc = getImageUrl(src);

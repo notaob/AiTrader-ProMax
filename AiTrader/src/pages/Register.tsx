@@ -7,7 +7,7 @@ export const Register = () => {
   const { openAuthModal } = useAuth();
   const [step, setStep] = useState<1 | 2>(1);
   const [countdown, setCountdown] = useState(0);
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [nickName, setNickName] = useState('');
   const [password, setPassword] = useState('');
@@ -24,19 +24,17 @@ export const Register = () => {
   }, [countdown]);
 
   const sendCode = async () => {
-    if (!phone) {
-      alert('请输入手机号');
+    if (!email) {
+      alert('请输入邮箱');
       return;
     }
-    if (!/^1\d{10}$/.test(phone)) {
-      alert('请输入有效的手机号');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      alert('请输入有效的邮箱地址');
       return;
     }
 
-    // TODO: 调用发送验证码 API
     try {
-      await authService.sendCode(phone);
-
+      await authService.sendCode(email);
       alert(`验证码已发送`);
     } catch (error) {
       console.error(error);
@@ -49,7 +47,6 @@ export const Register = () => {
 
   const handleNextStep = (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: 验证手机号和验证码是否正确
     if (!/^[0-9]{6}$/.test(code)) {
       alert('请输入有效的验证码');
       return;
@@ -63,9 +60,8 @@ export const Register = () => {
       alert('两次输入的密码不一致，请重新输入');
       return;
     }
-    // TODO: Implement registration logic
     try {
-      await authService.register(phone, code, password, nickName);
+      await authService.register(email, code, password, nickName);
       alert('注册成功，请登录');
       openAuthModal('login');
     } catch (error) {
@@ -87,15 +83,14 @@ export const Register = () => {
       {step === 1 ? (
         <form className={`${styles.form} ${styles.tabContent}`} key="step1" onSubmit={handleNextStep}>
           <div className={styles.inputGroup}>
-            <label className={styles.label}>手机号码</label>
+            <label className={styles.label}>邮箱地址</label>
             <input
-              type="tel"
+              type="email"
               className={styles.input}
-              placeholder="请输入手机号"
+              placeholder="请输入邮箱"
               required
-              pattern="[0-9]*"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </div>
 
@@ -154,9 +149,9 @@ export const Register = () => {
 
           <div className={styles.inputGroup}>
             <label className={styles.label}>昵称</label>
-            <input type="text" 
-            className={styles.input} 
-            placeholder="请输入昵称" 
+            <input type="text"
+            className={styles.input}
+            placeholder="请输入昵称"
             required
             value={nickName}
             onChange={(e) => setNickName(e.target.value)}

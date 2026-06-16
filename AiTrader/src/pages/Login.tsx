@@ -7,7 +7,7 @@ export const Login = () => {
   const { openAuthModal, login } = useAuth();
   const [loginMethod, setLoginMethod] = useState<'password' | 'code'>('password');
   const [countdown, setCountdown] = useState(0);
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,19 +23,18 @@ export const Login = () => {
   }, [countdown]);
 
   const sendCode = async () => {
-    if (!phone) {
-      alert('请输入手机号');
+    if (!email) {
+      alert('请输入邮箱');
       return;
     }
-    // 简单的手机号格式验证 (11位数字)
-    if (!/^1\d{10}$/.test(phone)) {
-      alert('请输入有效的手机号');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      alert('请输入有效的邮箱地址');
       return;
     }
-    
+
     try {
-      await authService.sendCode(phone);
-      alert('验证码已发送');
+      await authService.sendCode(email);
+      alert('验证码已发送到邮箱');
     } catch (error) {
       console.error(error);
       alert('验证码发送失败，请重试');
@@ -56,9 +55,8 @@ export const Login = () => {
         return;
       }
 
-      await login(phone, credential, loginMethod);
-      
-      // navigate('/'); // 移除这一行
+      await login(email, credential, loginMethod);
+
       alert('登录成功！');
     } catch (error) {
       console.error(error);
@@ -80,16 +78,16 @@ export const Login = () => {
   return (
     <div className={styles.container} style={{ minHeight: 'auto', padding: 0, width: '100%', background: 'transparent' }}>
       <h1 className={styles.title} style={{ marginTop: 0 }}>登录 AiTrader</h1>
-      
+
       {/* 登录方式切换 Tab */}
       <div className={styles.tabs}>
-        <span 
+        <span
           className={`${styles.tab} ${loginMethod === 'password' ? styles.tabActive : ''}`}
           onClick={() => setLoginMethod('password')}
         >
           密码登录
         </span>
-        <span 
+        <span
           className={`${styles.tab} ${loginMethod === 'code' ? styles.tabActive : ''}`}
           onClick={() => setLoginMethod('code')}
         >
@@ -99,34 +97,33 @@ export const Login = () => {
 
       <form className={styles.form} onSubmit={handleLogin}>
         <div className={styles.inputGroup}>
-          <label className={styles.label}>手机号码</label>
-          <input 
-            type="tel" 
-            className={styles.input} 
-            placeholder="请输入手机号" 
-            required 
-            pattern="[0-9]*" 
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+          <label className={styles.label}>邮箱地址</label>
+          <input
+            type="email"
+            className={styles.input}
+            placeholder="请输入邮箱"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
         </div>
-        
+
         {loginMethod === 'code' ? (
           <div className={`${styles.inputGroup} ${styles.tabContent}`} key="code">
             <label className={styles.label}>验证码</label>
             <div className={styles.codeInputWrapper}>
-              <input 
-                type="text" 
-                className={`${styles.input} ${styles.flexInput}`} 
-                placeholder="6位数字" 
-                required 
-                maxLength={6} 
+              <input
+                type="text"
+                className={`${styles.input} ${styles.flexInput}`}
+                placeholder="6位数字"
+                required
+                maxLength={6}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
               />
-              <button 
-                type="button" 
-                className={styles.codeButton} 
+              <button
+                type="button"
+                className={styles.codeButton}
                 onClick={sendCode}
                 disabled={countdown > 0}
               >
@@ -137,11 +134,11 @@ export const Login = () => {
         ) : (
           <div className={`${styles.inputGroup} ${styles.tabContent}`} key="password">
             <label className={styles.label}>密码</label>
-            <input 
-              type="password" 
-              className={styles.input} 
-              placeholder="请输入密码" 
-              required 
+            <input
+              type="password"
+              className={styles.input}
+              placeholder="请输入密码"
+              required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
