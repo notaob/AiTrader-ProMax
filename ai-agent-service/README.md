@@ -30,7 +30,7 @@ pip install -r requirements.txt
 编辑 `.env` 文件（已配置好，复用 Java 项目配置）：
 
 ```env
-DASHSCOPE_API_KEY=sk-c610024b260b4b8ea52703af5c47d88d
+DASHSCOPE_API_KEY=your_dashscope_api_key_here
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 REDIS_PASSWORD=123456

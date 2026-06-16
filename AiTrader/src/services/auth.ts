@@ -6,43 +6,42 @@ interface LoginResponse extends User {
 }
 
 export const authService = {
-  // 发送验证码
-  sendCode: (phone: string) => {
+  // 发送验证码到邮箱
+  sendCode: (email: string) => {
     return request<string>('/user/code', {
       method: 'POST',
-      params: { phone },
+      params: { email },
     });
   },
 
-  // 验证码登录
-  loginByCode: (phone: string, code: string) => {
-    return request<LoginResponse>('/user/login/sms', {
+  // 验证码登录（邮箱+验证码）
+  loginByCode: (email: string, code: string) => {
+    return request<LoginResponse>('/user/login/code', {
       method: 'POST',
-      body: JSON.stringify({ 
-        phone, // 明确只传 phone
-        code 
+      body: JSON.stringify({
+        email,
+        code
       }),
     });
   },
 
-  // 密码登录
-  loginByPassword: (phone: string, password: string) => {
+  // 密码登录（邮箱+密码）
+  loginByPassword: (email: string, password: string) => {
     return request<LoginResponse>('/user/login/password', {
       method: 'POST',
-      body: JSON.stringify({ 
-        phone, // 统一改为使用 phone
-        password 
+      body: JSON.stringify({
+        email,
+        password
       }),
     });
   },
-  
-  // 注册用户
-  // 注意参数顺序调整为与 Register.tsx 调用一致：(phone, code, password, nickName)
-  register: (phone: string, code: string, password: string, nickName: string) => {
+
+  // 注册（邮箱+验证码+密码+昵称）
+  register: (email: string, code: string, password: string, nickName: string) => {
     return request<LoginResponse>('/user/register', {
       method: 'POST',
-      body: JSON.stringify({ 
-        phone, 
+      body: JSON.stringify({
+        email,
         password,
         code,
         nickName
@@ -51,22 +50,22 @@ export const authService = {
   },
 
   // 重置密码
-  resetPassword: (phone: string, code: string, password: string) => {
+  resetPassword: (email: string, code: string, password: string) => {
     return request<void>('/user/resetPassword', {
       method: 'POST',
       body: JSON.stringify({
-        phone,
+        email,
         code,
         password
       }),
     });
   },
-  
+
   // 获取当前用户信息
   getCurrentUser: () => {
     return request<User>('/user/me');
   },
-  
+
   // 退出登录
   logout: () => {
     return request<string>('/user/logout', {
