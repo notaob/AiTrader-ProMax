@@ -14,6 +14,8 @@ public class LoginDTO {
 
     private String phone;
 
+    private String email;
+
     private String code;
 
     private String icon;

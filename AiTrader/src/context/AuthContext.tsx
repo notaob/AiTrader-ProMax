@@ -18,7 +18,7 @@ interface AuthContextType {
   authModalView: AuthView;
   openAuthModal: (view: AuthView) => void;
   closeAuthModal: () => void;
-  login: (phone: string, codeOrPassword: string, method: 'code' | 'password') => Promise<void>;
+  login: (email: string, codeOrPassword: string, method: 'code' | 'password') => Promise<void>;
   logout: () => void;
   updateUser: (updates: Partial<User>) => void;
 }
@@ -90,13 +90,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const openAuthModal = (view: AuthView) => setAuthModalView(view);
   const closeAuthModal = () => setAuthModalView(null);
 
-  const login = async (phone: string, codeOrPassword: string, method: 'code' | 'password') => {
+  const login = async (email: string, codeOrPassword: string, method: 'code' | 'password') => {
     // 真实后端模式：直接发起请求，错误由 UI 层捕获处理
     let data;
     if (method === 'code') {
-      data = await authService.loginByCode(phone, codeOrPassword);
+      data = await authService.loginByCode(email, codeOrPassword);
     } else {
-      data = await authService.loginByPassword(phone, codeOrPassword);
+      data = await authService.loginByPassword(email, codeOrPassword);
     }
     
     // 登录成功，保存 token

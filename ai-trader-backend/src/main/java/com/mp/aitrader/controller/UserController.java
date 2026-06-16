@@ -19,32 +19,32 @@ public class UserController {
     private TbUserService userService;
 
     @PostMapping("code")
-    public Result<String> sendCode(@RequestParam("phone") String phone) {
-        // 发送短信验证码并保存验证码
-        return userService.sendCode(phone);
+    public Result<String> sendCode(@RequestParam("email") String email) {
+        // 发送邮箱验证码并保存验证码
+        return userService.sendCode(email);
     }
     /**
-     * 密码登录
+     * 密码登录（邮箱+密码）
      * @param loginDTO
      * @return
      */
     @PostMapping("/login/password")
     public Result<LoginVO> login(@RequestBody LoginDTO loginDTO) {
 
-        log.info("员工登录：{}", loginDTO);
+        log.info("用户登录：{}", loginDTO);
 
         return userService.passwordLogin(loginDTO);
 
     }
 
     /**
-     * 短信登录
+     * 验证码登录（邮箱+验证码）
      * @param loginDTO
      * @return
      */
-    @PostMapping("/login/sms")
-    public Result<LoginVO> smsLogin(@RequestBody LoginDTO loginDTO) {
-        return userService.smsLogin(loginDTO);
+    @PostMapping("/login/code")
+    public Result<LoginVO> codeLogin(@RequestBody LoginDTO loginDTO) {
+        return userService.codeLogin(loginDTO);
     }
     /**
      * 注册

@@ -26,6 +26,11 @@ public class TbUser {
     private String phone;
 
     /**
+     * 邮箱地址
+     */
+    private String email;
+
+    /**
      * 密码，加密存储
      */
     private String password;

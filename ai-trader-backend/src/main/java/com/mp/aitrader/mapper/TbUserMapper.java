@@ -17,6 +17,8 @@ public interface TbUserMapper extends BaseMapper<TbUser> {
 
     TbUser getByUsername(@Param("phone") String username);
 
+    TbUser getByEmail(@Param("email") String email);
+
 }
 
 
