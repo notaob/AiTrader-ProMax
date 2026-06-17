@@ -77,5 +77,89 @@ export const cryptoService = {
       console.error('Binance History API failed', error);
       throw error;
     }
-  }
+  },
+
+  // 获取多时间框架市场情绪（基于 RSI）
+  getMarketSentiment: async (): Promise<SentimentItem[]> => {
+    const timeframes: { label: string; interval: string }[] = [
+      { label: '1小时趋势', interval: '1h' },
+      { label: '4小时趋势', interval: '4h' },
+      { label: '24小时趋势', interval: '1d' },
+    ];
+
+    try {
+      const results = await Promise.all(
+        timeframes.map(async ({ label, interval }) => {
+          const resp = await fetch(
+            `${BINANCE_API_URL}/klines?symbol=BTCUSDT&interval=${interval}&limit=20`
+          );
+          if (!resp.ok) throw new Error(`Failed to fetch ${interval} klines`);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const klines: any[][] = await resp.json();
+          const closes = klines.map((k: (string | number)[]) => parseFloat(k[4] as string));
+          const rsi = calculateRSI(closes, 14);
+          return { timeframe: label, rsi, signal: rsiToSignal(rsi) };
+        })
+      );
+      return results;
+    } catch (error) {
+      console.error('getMarketSentiment failed', error);
+      // 降级：全部返回中性
+      return timeframes.map(({ label }) => ({
+        timeframe: label,
+        rsi: 50,
+        signal: '中性',
+      }));
+    }
+  },
 };
+
+// ========== RSI 计算 ==========
+
+export interface SentimentItem {
+  timeframe: string;
+  rsi: number;
+  signal: string;
+}
+
+/** Wilder 平滑 RSI(14) */
+function calculateRSI(prices: number[], period: number = 14): number {
+  if (prices.length <= period) return 50;
+
+  let sumGain = 0;
+  let sumLoss = 0;
+
+  for (let i = 1; i <= period; i++) {
+    const diff = prices[i] - prices[i - 1];
+    if (diff >= 0) sumGain += diff;
+    else sumLoss += Math.abs(diff);
+  }
+
+  let avgGain = sumGain / period;
+  let avgLoss = sumLoss / period;
+
+  // Wilder 平滑
+  for (let i = period + 1; i < prices.length; i++) {
+    const diff = prices[i] - prices[i - 1];
+    if (diff >= 0) {
+      avgGain = (avgGain * (period - 1) + diff) / period;
+      avgLoss = (avgLoss * (period - 1)) / period;
+    } else {
+      avgGain = (avgGain * (period - 1)) / period;
+      avgLoss = (avgLoss * (period - 1) + Math.abs(diff)) / period;
+    }
+  }
+
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return Math.round((100 - 100 / (1 + rs)) * 10) / 10; // 保留一位小数
+}
+
+/** RSI 值映射为趋势信号 */
+function rsiToSignal(rsi: number): string {
+  if (rsi >= 70) return '强力买入';
+  if (rsi >= 55) return '买入';
+  if (rsi >= 45) return '中性';
+  if (rsi >= 30) return '卖出';
+  return '强力卖出';
+}
