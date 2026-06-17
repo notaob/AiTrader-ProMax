@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Loader2, FileText, ChevronRight, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { aiService, type Message } from '../services/ai';
+import { aiService, type Message, type ProfileOption } from '../services/ai';
 import { useAuth } from '../context/AuthContext';
 import { MemoryPanel } from './MemoryPanel';
 import { KnowledgePanel } from './KnowledgePanel';
@@ -11,20 +11,20 @@ import { knowledgeService, type KnowledgeDoc } from '../services/knowledge';
 export const AIChat = () => {
   const { user, openAuthModal, updateUser } = useAuth();
   const navigate = useNavigate();
-  const [messages, setMessages] = useState<Array<{ role: string, content: string }>>([]);
+  const [messages, setMessages] = useState<Array<{ role: string, content: string, profileOptions?: ProfileOption[] }>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [inputMessage, setInputMessage] = useState('');
   const [chatMode, setChatMode] = useState<'chat' | 'strategy'>('chat');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'chat' | 'strategy' | 'knowledge'>('chat');
   const [memories, setMemories] = useState<Memory[]>([]);
   const [memoriesLoading, setMemoriesLoading] = useState(false);
   const [memoriesError, setMemoriesError] = useState<string | null>(null);
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDoc[]>([]);
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [knowledgeError, setKnowledgeError] = useState<string | null>(null);
-  const [streamingContent, setStreamingContent] = useState('');
+  const [streamState, setStreamState] = useState<{ content: string; options?: ProfileOption[] }>({ content: '' });
   const streamingRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasInitialized = useRef(false);
@@ -113,7 +113,7 @@ export const AIChat = () => {
       '正在生成回复...',
     ];
     let statusIdx = 0;
-    setStreamingContent(statusMessages[0]);
+    setStreamState({ content: statusMessages[0] });
 
     const statusTimer = setInterval(() => {
       statusIdx = Math.min(statusIdx + 1, statusMessages.length - 1);
@@ -132,7 +132,24 @@ export const AIChat = () => {
         updateUser({ aiChance: response.remainingChance });
       }
 
+      // 聊天成功后静默刷新记忆列表（后台执行，不影响用户交互）
+      memoryService.getMemories()
+        .then(data => setMemories(data || []))
+        .catch(() => {});
+
       const fullText = response.reply || 'AI 未返回有效内容，请稍后重试。';
+      const options = response.profileOptions;
+
+      // 如果有选项，立即展示选项按钮（不打字动画）
+      if (options && options.length > 0) {
+        setStreamState({ content: fullText, options });
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        // 直接将消息加入历史（含选项）
+        setMessages(prev => [...prev, { role: 'assistant', content: fullText, profileOptions: options }]);
+        setStreamState({ content: '' });
+        setIsTyping(false);
+        return;
+      }
 
       // 自适应打字速度：总时长控制在 ~3 秒，内容越长每次追加越多
       const maxDuration = 3000;
@@ -151,7 +168,7 @@ export const AIChat = () => {
         if (index >= fullText.length) {
           if (typingTimeoutRef.current) clearInterval(typingTimeoutRef.current);
           setMessages(prev => [...prev, { role: 'assistant', content: fullText }]);
-          setStreamingContent('');
+          setStreamState({ content: '' });
           setIsTyping(false);
         }
       }, interval);
@@ -163,7 +180,7 @@ export const AIChat = () => {
       setIsTyping(false);
 
       setMessages(prev => [...prev, { role: 'assistant', content: '无法连接到 AI 服务器，请稍后再试。' }]);
-      setStreamingContent('');
+      setStreamState({ content: '' });
     }
   };
 
@@ -171,6 +188,80 @@ export const AIChat = () => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  };
+
+  const handleOptionSelect = async (value: string) => {
+    if (isLoading || isTyping) return;
+    if (!user) { openAuthModal('login'); return; }
+
+    const messageText = value;
+
+    let currentConversationId = conversationId;
+    if (!currentConversationId) {
+      try {
+        const conversation = await aiService.createConversation('AI交易对话', 'chat');
+        currentConversationId = conversation.id;
+        setConversationId(currentConversationId);
+      } catch (error) {
+        console.error('创建会话失败:', error);
+        return;
+      }
+    }
+
+    setMessages(prev => [...prev, { role: 'user', content: messageText }]);
+    setIsLoading(true);
+    setIsTyping(true);
+    setStreamState({ content: '正在处理您的选择...' });
+
+    try {
+      const response = await aiService.chat(currentConversationId, messageText, 'strategy');
+      setIsLoading(false);
+
+      // 策略模式扣减次数
+      if (response.remainingChance !== undefined) {
+        updateUser({ aiChance: response.remainingChance });
+      }
+
+      const fullText = response.reply || 'AI 未返回有效内容。';
+      const options = response.profileOptions;
+
+      if (options && options.length > 0) {
+        setMessages(prev => [...prev, { role: 'assistant', content: fullText, profileOptions: options }]);
+        setStreamState({ content: '' });
+        setIsTyping(false);
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        return;
+      }
+
+      // 画像完整后生成的策略报告，使用打字动画
+      const maxDuration = 3000;
+      const interval = 40;
+      const totalTicks = maxDuration / interval;
+      const chunkSize = Math.max(2, Math.ceil(fullText.length / totalTicks));
+      let index = 0;
+
+      typingTimeoutRef.current = setInterval(() => {
+        index = Math.min(index + chunkSize, fullText.length);
+        if (streamingRef.current) {
+          streamingRef.current.textContent = fullText.slice(0, index);
+        }
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+
+        if (index >= fullText.length) {
+          if (typingTimeoutRef.current) clearInterval(typingTimeoutRef.current);
+          setMessages(prev => [...prev, { role: 'assistant', content: fullText }]);
+          setStreamState({ content: '' });
+          setIsTyping(false);
+        }
+      }, interval);
+
+    } catch (error) {
+      console.error('Option select error:', error);
+      setIsLoading(false);
+      setIsTyping(false);
+      setMessages(prev => [...prev, { role: 'assistant', content: '无法连接到 AI 服务器，请稍后再试。' }]);
+      setStreamState({ content: '' });
     }
   };
 
@@ -198,10 +289,10 @@ export const AIChat = () => {
   };
 
   useEffect(() => {
-    if (sidebarOpen) {
+    if (activeTab === 'knowledge') {
       loadSidePanelData();
     }
-  }, [sidebarOpen]);
+  }, [activeTab]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -229,29 +320,16 @@ export const AIChat = () => {
           <span style={{ fontWeight: 'bold' }}>AI Trader</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '16px',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '13px',
-              fontWeight: 500,
-              background: sidebarOpen ? '#8884d8' : '#333',
-              color: '#fff',
-              transition: 'all 0.2s',
-            }}
-          >
-            <BookOpen size={14} />
-            记忆与知识
-          </button>
-          <div style={{ display: 'flex', gap: '8px', background: '#333', borderRadius: '20px', padding: '4px' }}>
+          <div style={{
+            display: 'flex',
+            gap: 0,
+            background: '#2a2a2a',
+            borderRadius: '20px',
+            padding: '3px',
+            border: '1px solid #444',
+          }}>
             <button
-              onClick={() => setChatMode('chat')}
+              onClick={() => { setActiveTab('chat'); setChatMode('chat'); setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100); }}
               style={{
                 padding: '6px 16px',
                 borderRadius: '16px',
@@ -259,15 +337,15 @@ export const AIChat = () => {
                 cursor: 'pointer',
                 fontSize: '13px',
                 fontWeight: 500,
-                background: chatMode === 'chat' ? '#4CAF50' : 'transparent',
-                color: chatMode === 'chat' ? '#fff' : '#aaa',
+                background: activeTab === 'chat' ? '#4CAF50' : 'transparent',
+                color: activeTab === 'chat' ? '#fff' : '#888',
                 transition: 'all 0.2s',
               }}
             >
               通用模式
             </button>
             <button
-              onClick={() => setChatMode('strategy')}
+              onClick={() => { setActiveTab('strategy'); setChatMode('strategy'); setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100); }}
               style={{
                 padding: '6px 16px',
                 borderRadius: '16px',
@@ -275,12 +353,32 @@ export const AIChat = () => {
                 cursor: 'pointer',
                 fontSize: '13px',
                 fontWeight: 500,
-                background: chatMode === 'strategy' ? '#4CAF50' : 'transparent',
-                color: chatMode === 'strategy' ? '#fff' : '#aaa',
+                background: activeTab === 'strategy' ? '#4CAF50' : 'transparent',
+                color: activeTab === 'strategy' ? '#fff' : '#888',
                 transition: 'all 0.2s',
               }}
             >
               策略报告
+            </button>
+            <button
+              onClick={() => setActiveTab('knowledge')}
+              style={{
+                padding: '6px 16px',
+                borderRadius: '16px',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: activeTab === 'knowledge' ? '#8884d8' : 'transparent',
+                color: activeTab === 'knowledge' ? '#fff' : '#888',
+                transition: 'all 0.2s',
+              }}
+            >
+              <BookOpen size={13} />
+              记忆与知识
             </button>
           </div>
         </div>
@@ -288,7 +386,7 @@ export const AIChat = () => {
 
       {/* 主体区域 */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {sidebarOpen ? (
+        {activeTab === 'knowledge' ? (
           /* 侧边栏模式：全宽显示记忆与知识 */
           <div style={{
             flex: 1,
@@ -402,12 +500,42 @@ export const AIChat = () => {
                     ) : (
                       <span>{msg.content}</span>
                     )}
+                    {msg.profileOptions && msg.profileOptions.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+                        {msg.profileOptions.map((opt, i) => (
+                          <button
+                            key={i}
+                            onClick={() => handleOptionSelect(opt.value)}
+                            disabled={isLoading || isTyping}
+                            style={{
+                              padding: '10px 16px',
+                              borderRadius: '8px',
+                              border: '1px solid #555',
+                              background: (isLoading || isTyping) ? '#444' : '#2a2a2a',
+                              color: '#fff',
+                              fontSize: '13px',
+                              cursor: (isLoading || isTyping) ? 'not-allowed' : 'pointer',
+                              textAlign: 'left',
+                              transition: 'background 0.2s',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isLoading && !isTyping) (e.currentTarget.style.background = '#4CAF50');
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = (isLoading || isTyping) ? '#444' : '#2a2a2a';
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
 
               {/* 流式打字气泡 — ref 直接操作 DOM，不触发 React re-render */}
-              {streamingContent && (
+              {streamState.content && (
                 <div style={{
                   alignSelf: 'flex-start',
                   maxWidth: '80%',
@@ -436,12 +564,42 @@ export const AIChat = () => {
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word',
                   }}>
-                    <span ref={streamingRef}>{streamingContent}</span>
+                    <span ref={streamingRef}>{streamState.content}</span>
+                    {streamState.options && streamState.options.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+                        {streamState.options.map((opt, i) => (
+                          <button
+                            key={i}
+                            onClick={() => handleOptionSelect(opt.value)}
+                            disabled={isLoading || isTyping}
+                            style={{
+                              padding: '10px 16px',
+                              borderRadius: '8px',
+                              border: '1px solid #555',
+                              background: (isLoading || isTyping) ? '#444' : '#2a2a2a',
+                              color: '#fff',
+                              fontSize: '13px',
+                              cursor: (isLoading || isTyping) ? 'not-allowed' : 'pointer',
+                              textAlign: 'left',
+                              transition: 'background 0.2s',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isLoading && !isTyping) (e.currentTarget.style.background = '#4CAF50');
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = (isLoading || isTyping) ? '#444' : '#2a2a2a';
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
-              {isLoading && !streamingContent && (
+              {isLoading && !streamState.content && (
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   <div style={{
                     width: '30px',

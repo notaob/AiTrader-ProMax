@@ -29,7 +29,8 @@ public class AiMemoryController {
     @PostMapping("/rebuild")
     public Result<String> rebuildMemoryIndex() {
         Long userId = BaseContext.getCurrentId();
-        log.info("用户 {} 重建记忆索引", userId);
-        return Result.success("记忆索引重建任务已提交");
+        int count = memoryService.clearUserMemories(userId);
+        log.info("用户 {} 重建记忆，已清除 {} 条旧记忆", userId, count);
+        return Result.success("已清除 " + count + " 条旧记忆，后续对话将重新积累");
     }
 }

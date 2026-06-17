@@ -19,6 +19,18 @@ export interface Conversation {
   updatedAt: string;
 }
 
+export interface ProfileOption {
+  label: string;
+  value: string;
+}
+
+export interface ChatResult {
+  reply: string;
+  conversationId: number;
+  remainingChance?: number;
+  profileOptions?: ProfileOption[];
+}
+
 export interface SessionState {
   id: number;
   conversationId: number;
@@ -50,7 +62,7 @@ export const aiService = {
   },
 
   chat: (conversationId: number, message: string, mode?: string) => {
-    return request<{ reply: string; conversationId: number; remainingChance?: number }>(`/ai/conversations/${conversationId}/chat`, {
+    return request<ChatResult>(`/ai/conversations/${conversationId}/chat`, {
       method: 'POST',
       body: JSON.stringify({ message, mode: mode || 'chat' }),
     });

@@ -19,6 +19,7 @@ class ChatResponse(BaseModel):
     thought_process: Optional[List[Dict[str, Any]]] = None
     execution_time: int
     memory_candidates: Optional[List[str]] = []
+    memory_candidates_typed: Optional[List[Dict[str, str]]] = []
 
 class RAGRequest(BaseModel):
     question: str

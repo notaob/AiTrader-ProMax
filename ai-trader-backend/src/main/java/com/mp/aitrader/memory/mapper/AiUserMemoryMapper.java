@@ -68,4 +68,13 @@ public interface AiUserMemoryMapper {
 
     @Update("UPDATE ai_user_memories SET is_active = 0, updated_at = NOW() WHERE id = #{id}")
     void deactivateById(@Param("id") Long id);
+
+    @Update("UPDATE ai_user_memories SET is_active = 0, updated_at = NOW() WHERE user_id = #{userId} AND is_active = 1")
+    int deactivateAllByUserId(@Param("userId") Long userId);
+
+    @Select("SELECT DISTINCT memory_type FROM ai_user_memories WHERE user_id = #{userId} AND is_active = 1")
+    List<String> selectDistinctMemoryTypes(@Param("userId") Long userId);
+
+    @Update("UPDATE ai_user_memories SET is_active = 0, updated_at = NOW() WHERE user_id = #{userId} AND memory_type = #{memoryType} AND is_active = 1")
+    int deactivateByType(@Param("userId") Long userId, @Param("memoryType") String memoryType);
 }

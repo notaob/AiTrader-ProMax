@@ -4,11 +4,14 @@ import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONUtil;
 import com.mp.aitrader.agent.dto.ChatResponse;
+import com.mp.aitrader.agent.dto.LangGraphChatResult;
 import com.mp.aitrader.agent.dto.ReActResponse;
+import com.mp.aitrader.agent.dto.TypedMemoryCandidate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -153,12 +156,13 @@ public class LangGraphClient {
     }
 
     /**
-     * 带上下文的对
+     * 带上下文的对话
      */
-    public String chatWithContext(String message, String userId, String sessionId,
+    public LangGraphChatResult chatWithContext(String message, String userId, String sessionId,
                                    List<Map<String, String>> history,
                                    Map<String, Object> state,
                                    List<String> summaries,
+                                   List<String> memories,
                                    String mode) {
         try {
             Map<String, Object> requestBody = new HashMap<>();
@@ -168,6 +172,7 @@ public class LangGraphClient {
             requestBody.put("history", history);
             requestBody.put("state", state);
             requestBody.put("summaries", summaries);
+            requestBody.put("memories", memories != null ? memories : new ArrayList<>());
             requestBody.put("mode", mode != null ? mode : "chat");
 
             HttpResponse response = HttpRequest.post(agentServiceUrl + "/agent/chat")
@@ -179,14 +184,58 @@ public class LangGraphClient {
             if (response.getStatus() == 200) {
                 String body = response.body();
                 Map<String, Object> result = JSONUtil.parseObj(body);
-                return (String) result.get("answer");
+                String answer = (String) result.get("answer");
+
+                // 解析 Python 端返回的记忆候选（文本列表，向后兼容）
+                List<String> memoryCandidates = new ArrayList<>();
+                Object candidatesObj = result.get("memory_candidates");
+                if (candidatesObj instanceof List) {
+                    for (Object item : (List<?>) candidatesObj) {
+                        if (item != null) {
+                            memoryCandidates.add(item.toString());
+                        }
+                    }
+                }
+
+                // 解析带类型的记忆候选
+                List<TypedMemoryCandidate> typedCandidates = new ArrayList<>();
+                Object typedCandidatesObj = result.get("memory_candidates_typed");
+                if (typedCandidatesObj instanceof List) {
+                    for (Object item : (List<?>) typedCandidatesObj) {
+                        if (item instanceof Map) {
+                            Map<?, ?> map = (Map<?, ?>) item;
+                            String content = map.get("content") != null ? map.get("content").toString() : "";
+                            String type = map.get("type") != null ? map.get("type").toString() : "preference";
+                            if (!content.isEmpty()) {
+                                typedCandidates.add(TypedMemoryCandidate.builder()
+                                        .content(content)
+                                        .memoryType(type)
+                                        .build());
+                            }
+                        }
+                    }
+                }
+
+                return LangGraphChatResult.builder()
+                        .answer(answer)
+                        .memoryCandidates(memoryCandidates)
+                        .typedMemoryCandidates(typedCandidates)
+                        .build();
             } else {
                 log.error("LangGraph 服务调用失败: {}", response.getStatus());
-                return "AI 服务暂时繁忙，请稍后再试。";
+                return LangGraphChatResult.builder()
+                        .answer("AI 服务暂时繁忙，请稍后再试。")
+                        .memoryCandidates(new ArrayList<>())
+                        .typedMemoryCandidates(new ArrayList<>())
+                        .build();
             }
         } catch (Exception e) {
             log.error("调用 LangGraph 服务异常", e);
-            return "AI 分析服务连接失败，请检查网络配置。";
+            return LangGraphChatResult.builder()
+                    .answer("AI 分析服务连接失败，请检查网络配置。")
+                    .memoryCandidates(new ArrayList<>())
+                    .typedMemoryCandidates(new ArrayList<>())
+                    .build();
         }
     }
 

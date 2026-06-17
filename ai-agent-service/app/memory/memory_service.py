@@ -1,7 +1,61 @@
 import re
 import hashlib
 import math
-from typing import List, Dict
+from typing import List, Dict, Optional
+
+
+def classify_user_message(user_message: str) -> Optional[Dict]:
+    """
+    用 AI 分类用户消息为: preference / goal / constraint / none
+    返回 {"content": "提取的记忆文本", "type": "preference|goal|constraint"} 或 None
+    """
+    from langchain_openai import ChatOpenAI
+    from langchain_core.messages import HumanMessage as _HumanMessage
+    from app.config import config
+
+    llm = ChatOpenAI(
+        model=config.DASHSCOPE_MODEL,
+        openai_api_key=config.DASHSCOPE_API_KEY,
+        openai_api_base=config.DASHSCOPE_BASE_URL,
+        temperature=0,
+        max_tokens=256,
+    )
+
+    prompt = """你是一个记忆分类器。分析用户消息，判断是否包含以下信息之一：
+- preference: 交易偏好（交易风格、喜欢的币种、持仓时间偏好、分析方法偏好）
+- goal: 交易目标（收益目标、盈利预期、投资计划）
+- constraint: 风控约束（止损规则、仓位限制、风险控制、最大回撤）
+- none: 以上都不包含（如问候、提问、闲聊）
+
+同时提取用户表达的核心内容作为记忆文本（用第一人称，简洁表述）。
+
+只输出 JSON，不要其他内容。
+格式：{"type": "preference|goal|constraint|none", "content": "记忆文本"}
+
+用户消息：""" + user_message
+
+    try:
+        result = llm.invoke([_HumanMessage(content=prompt)])
+        text = result.content.strip()
+        # 去除推理模型的 <think>...</think> 标签（如 deepseek-v3/v4 等）
+        text = re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
+        # 提取 JSON（兼容 markdown code block）
+        if "```" in text:
+            text = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL).group(1)
+        # 兜底：如果还有非 JSON 前缀，尝试找到第一个 { 开始截取
+        brace_idx = text.find("{")
+        if brace_idx > 0:
+            text = text[brace_idx:]
+        import json
+        data = json.loads(text)
+        mem_type = data.get("type", "none")
+        content = data.get("content", "")
+        if mem_type in ("preference", "goal", "constraint") and content:
+            return {"content": content, "type": mem_type}
+        return None
+    except Exception as e:
+        print(f"[classify_user_message] error: {e}")
+        return None
 
 
 def extract_memory_from_dialogue(user_message: str, ai_response: str) -> List[Dict]:

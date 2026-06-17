@@ -9,7 +9,7 @@ from app.config import config
 from app.rag.rag_service import rag_service
 from app.rag.document_processor import document_processor
 from app.context.context_builder import build_prompt
-from app.memory.memory_service import extract_memory_from_dialogue
+from app.memory.memory_service import extract_memory_from_dialogue, classify_user_message
 from langchain_core.messages import HumanMessage
 
 app = FastAPI(
@@ -85,16 +85,23 @@ async def chat(request: ChatRequest):
         final_message = result["messages"][-1]
         answer = final_message.content if hasattr(final_message, 'content') else str(final_message)
 
-        # 从对话中提取记忆候选
-        memory_candidates = extract_memory_from_dialogue(request.message, answer)
-        memory_candidate_texts = [cand["text"] for cand in memory_candidates]
+        # 记忆提取：chat 模式用 AI 分类用户消息，strategy 模式跳过
+        memory_candidate_texts = []
+        memory_candidates_typed = []
+
+        if (request.mode or "chat") != "strategy":
+            classified = classify_user_message(request.message)
+            if classified:
+                memory_candidate_texts.append(classified["content"])
+                memory_candidates_typed.append(classified)
 
         return ChatResponse(
             success=True,
             answer=answer,
             thought_process=result.get("intermediate_steps", []),
             execution_time=execution_time,
-            memory_candidates=memory_candidate_texts
+            memory_candidates=memory_candidate_texts,
+            memory_candidates_typed=memory_candidates_typed
         )
     except Exception as e:
         import traceback
