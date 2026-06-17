@@ -8,5 +8,5 @@ def create_llm():
         openai_api_key=config.DASHSCOPE_API_KEY,
         openai_api_base=config.DASHSCOPE_BASE_URL,
         temperature=0.7,
-        max_tokens=2000
+        max_tokens=8000
     )

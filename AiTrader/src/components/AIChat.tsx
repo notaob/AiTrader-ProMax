@@ -24,6 +24,8 @@ export const AIChat = () => {
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDoc[]>([]);
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [knowledgeError, setKnowledgeError] = useState<string | null>(null);
+  const [streamingContent, setStreamingContent] = useState('');
+  const streamingRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasInitialized = useRef(false);
 
@@ -73,34 +75,6 @@ export const AIChat = () => {
     }
   };
 
-  const typeMessage = (fullText: string) => {
-    setIsTyping(true);
-    let index = 0;
-
-    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
-
-    typingTimeoutRef.current = setInterval(() => {
-      setMessages(prev => {
-        const newMessages = [...prev];
-        const lastMsgIndex = newMessages.length - 1;
-
-        if (newMessages[lastMsgIndex] && newMessages[lastMsgIndex].role === 'assistant') {
-          newMessages[lastMsgIndex] = {
-            ...newMessages[lastMsgIndex],
-            content: fullText.slice(0, index + 1)
-          };
-        }
-        return newMessages;
-      });
-
-      index++;
-      if (index >= fullText.length) {
-        if (typingTimeoutRef.current) clearInterval(typingTimeoutRef.current);
-        setIsTyping(false);
-      }
-    }, 30);
-  };
-
   const handleSend = async () => {
     if (isLoading || isTyping) return;
 
@@ -127,23 +101,64 @@ export const AIChat = () => {
       : (inputMessage.trim() || '请给我AI交易策略');
     setInputMessage('');
 
-    const newMessages = [...messages, { role: 'user', content: messageText }];
-    setMessages(newMessages);
+    setMessages(prev => [...prev, { role: 'user', content: messageText }]);
     setIsLoading(true);
+    setIsTyping(true);
+
+    // 立即展示流式气泡，用轮换状态文案减少等待焦虑
+    const statusMessages = [
+      '正在连接 AI 服务...',
+      '正在获取市场数据...',
+      '正在分析技术指标...',
+      '正在生成回复...',
+    ];
+    let statusIdx = 0;
+    setStreamingContent(statusMessages[0]);
+
+    const statusTimer = setInterval(() => {
+      statusIdx = Math.min(statusIdx + 1, statusMessages.length - 1);
+      if (streamingRef.current) {
+        streamingRef.current.textContent = statusMessages[statusIdx];
+      }
+    }, 3000);
 
     try {
       const response = await aiService.chat(currentConversationId, messageText, chatMode);
-      setIsLoading(false);
-      typeMessage(response.reply);
-    } catch (error) {
-      console.error('AI Chat Error:', error);
+      clearInterval(statusTimer);
       setIsLoading(false);
 
-      const fallbackReply = `无法连接到 AI 服务器，请稍后再试。`;
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: fallbackReply
-      }]);
+      const fullText = response.reply || 'AI 未返回有效内容，请稍后重试。';
+
+      // 自适应打字速度：总时长控制在 ~3 秒，内容越长每次追加越多
+      const maxDuration = 3000;
+      const interval = 40;
+      const totalTicks = maxDuration / interval;
+      const chunkSize = Math.max(2, Math.ceil(fullText.length / totalTicks));
+      let index = 0;
+
+      typingTimeoutRef.current = setInterval(() => {
+        index = Math.min(index + chunkSize, fullText.length);
+        if (streamingRef.current) {
+          streamingRef.current.textContent = fullText.slice(0, index);
+        }
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+
+        if (index >= fullText.length) {
+          if (typingTimeoutRef.current) clearInterval(typingTimeoutRef.current);
+          setMessages(prev => [...prev, { role: 'assistant', content: fullText }]);
+          setStreamingContent('');
+          setIsTyping(false);
+        }
+      }, interval);
+
+    } catch (error) {
+      clearInterval(statusTimer);
+      console.error('AI Chat Error:', error);
+      setIsLoading(false);
+      setIsTyping(false);
+
+      setMessages(prev => [...prev, { role: 'assistant', content: '无法连接到 AI 服务器，请稍后再试。' }]);
+      setStreamingContent('');
     }
   };
 
@@ -306,7 +321,7 @@ export const AIChat = () => {
             flexDirection: 'column',
             overflow: 'hidden',
           }}>
-            <div style={{
+            <div translate="no" style={{
               flex: 1,
               overflowY: 'auto',
               padding: '20px',
@@ -348,7 +363,9 @@ export const AIChat = () => {
                     fontSize: '14px',
                     lineHeight: '1.4',
                     maxWidth: '100%',
-                    overflow: 'hidden'
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    overflowWrap: 'break-word'
                   }}>
                     {msg.role === 'assistant' && (msg.content.trim().startsWith('#') || msg.content.includes('## 1.') || msg.content.includes('交易策略')) && (!isTyping || idx !== messages.length - 1) ? (
                       <div
@@ -378,12 +395,48 @@ export const AIChat = () => {
                         </div>
                       </div>
                     ) : (
-                      msg.content
+                      <span>{msg.content}</span>
                     )}
                   </div>
                 </div>
               ))}
-              {isLoading && (
+
+              {/* 流式打字气泡 — ref 直接操作 DOM，不触发 React re-render */}
+              {streamingContent && (
+                <div style={{
+                  alignSelf: 'flex-start',
+                  maxWidth: '80%',
+                  display: 'flex',
+                  gap: '10px',
+                }}>
+                  <div style={{
+                    width: '30px',
+                    height: '30px',
+                    borderRadius: '50%',
+                    background: '#8884d8',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    <Bot size={16} />
+                  </div>
+                  <div style={{
+                    background: '#333',
+                    padding: '10px 15px',
+                    borderRadius: '12px',
+                    fontSize: '14px',
+                    lineHeight: '1.4',
+                    maxWidth: '100%',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}>
+                    <span ref={streamingRef}>{streamingContent}</span>
+                  </div>
+                </div>
+              )}
+
+              {isLoading && !streamingContent && (
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   <div style={{
                     width: '30px',

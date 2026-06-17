@@ -21,6 +21,7 @@ class TradingState(TypedDict):
     session_id: str
     intermediate_steps: List[Dict[str, Any]]
     mode: str  # "chat" 或 "strategy"
+    context: Dict[str, Any]  # 上下文：state, summaries, memories, knowledge_chunks, system_prompt
 
 # LLM 绑定工具
 llm = create_llm().bind_tools(all_tools)
@@ -75,31 +76,31 @@ STRATEGY_PROMPT = """你是一名专业的加密货币交易专家。请根据�
 
 async def agent_node(state: TradingState):
     """Agent 思考节点"""
-    # 根据模式选择提示词
-    mode = state.get("mode", "chat")
-    if mode == "strategy":
-        system_prompt = STRATEGY_PROMPT
-    else:
-        system_prompt = SYSTEM_PROMPT
-    
-    # 添加上下文信息（state 和 summaries）
-    context = state.get("context", {})
-    if context:
+    context = state.get("context", {}) or {}
+
+    # 优先使用预构建的 system_prompt（由 build_prompt 生成，包含完整上下文）
+    system_prompt = context.get("system_prompt")
+    if not system_prompt:
+        mode = state.get("mode", "chat")
+        if mode == "strategy":
+            system_prompt = STRATEGY_PROMPT
+        else:
+            system_prompt = SYSTEM_PROMPT
+
+        # 追加上下文信息，转义花括号防止 ChatPromptTemplate 误解析
         state_info = context.get("state")
         summaries = context.get("summaries")
-        
+
         if state_info:
             system_prompt += "\n\n当前会话状态："
             for key, value in state_info.items():
-                if key != "state_json":
-                    system_prompt += f"\n- {key}: {value}"
-                else:
-                    system_prompt += f"\n- {key}: {value}"
-        
+                val_str = str(value).replace("{", "{{").replace("}", "}}")
+                system_prompt += f"\n- {key}: {val_str}"
+
         if summaries and len(summaries) > 0:
             system_prompt += "\n\n历史摘要："
             for summary in summaries:
-                system_prompt += f"\n{summary}"
+                system_prompt += "\n" + str(summary).replace("{", "{{").replace("}", "}}")
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
