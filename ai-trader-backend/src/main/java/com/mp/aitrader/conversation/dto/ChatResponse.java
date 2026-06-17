@@ -8,4 +8,5 @@ import lombok.Data;
 public class ChatResponse {
     private String reply;
     private Long conversationId;
+    private Integer remainingChance;  // 策略模式扣减后的剩余次数，供前端实时刷新
 }

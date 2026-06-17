@@ -50,7 +50,7 @@ export const aiService = {
   },
 
   chat: (conversationId: number, message: string, mode?: string) => {
-    return request<{ reply: string; conversationId: number }>(`/ai/conversations/${conversationId}/chat`, {
+    return request<{ reply: string; conversationId: number; remainingChance?: number }>(`/ai/conversations/${conversationId}/chat`, {
       method: 'POST',
       body: JSON.stringify({ message, mode: mode || 'chat' }),
     });

@@ -7,12 +7,15 @@ import com.mp.aitrader.conversation.service.AiConversationService;
 import com.mp.aitrader.conversation.service.AiSessionStateService;
 import com.mp.aitrader.conversation.service.AiSummaryService;
 import com.mp.aitrader.agent.client.LangGraphClient;
+import com.mp.aitrader.domain.TbUser;
+import com.mp.aitrader.mapper.TbUserMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -40,6 +43,9 @@ public class AiConversationServiceImpl implements AiConversationService {
 
     @Autowired
     private LangGraphClient langGraphClient;
+
+    @Autowired
+    private TbUserMapper userMapper;
 
     @Override
     @Transactional
@@ -78,6 +84,30 @@ public class AiConversationServiceImpl implements AiConversationService {
     @Transactional
     public ChatResponse chat(Long conversationId, Long userId, ChatMessageRequest request) {
         String userMessage = request.getMessage();
+        String mode = request.getMode();
+
+        // 策略报告模式：检查并扣减 AI 机会次数
+        Integer remainingChance = null;
+        if ("strategy".equals(mode)) {
+            TbUser user = userMapper.selectById(userId);
+            if (user == null) {
+                return ChatResponse.builder()
+                        .reply("用户不存在")
+                        .conversationId(conversationId)
+                        .build();
+            }
+            Integer aiChance = user.getAiChance() == null ? 0 : user.getAiChance();
+            if (aiChance <= 0) {
+                return ChatResponse.builder()
+                        .reply("AI交易机会不足，请先获取机会")
+                        .conversationId(conversationId)
+                        .build();
+            }
+            user.setAiChance(aiChance - 1);
+            user.setUpdateTime(new Date());
+            userMapper.updateById(user);
+            remainingChance = aiChance - 1;
+        }
 
         Integer maxIndex = messageMapper.selectMaxMessageIndex(conversationId);
         int nextIndex = (maxIndex != null ? maxIndex : 0) + 1;
@@ -117,7 +147,6 @@ public class AiConversationServiceImpl implements AiConversationService {
             summaries.add(latestSummary.getSummaryText());
         }
 
-        String mode = request.getMode();
         String reply = langGraphClient.chatWithContext(
                 userMessage,
                 userId.toString(),
@@ -151,6 +180,7 @@ public class AiConversationServiceImpl implements AiConversationService {
         return ChatResponse.builder()
                 .reply(reply)
                 .conversationId(conversationId)
+                .remainingChance(remainingChance)
                 .build();
     }
 

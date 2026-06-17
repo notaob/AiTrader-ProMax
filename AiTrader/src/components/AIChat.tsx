@@ -9,7 +9,7 @@ import { memoryService, type Memory } from '../services/memory';
 import { knowledgeService, type KnowledgeDoc } from '../services/knowledge';
 
 export const AIChat = () => {
-  const { user, openAuthModal } = useAuth();
+  const { user, openAuthModal, updateUser } = useAuth();
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Array<{ role: string, content: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -126,6 +126,11 @@ export const AIChat = () => {
       const response = await aiService.chat(currentConversationId, messageText, chatMode);
       clearInterval(statusTimer);
       setIsLoading(false);
+
+      // 策略模式：后端扣减后返回剩余次数，前端实时刷新
+      if (chatMode === 'strategy' && response.remainingChance !== undefined) {
+        updateUser({ aiChance: response.remainingChance });
+      }
 
       const fullText = response.reply || 'AI 未返回有效内容，请稍后重试。';
 
