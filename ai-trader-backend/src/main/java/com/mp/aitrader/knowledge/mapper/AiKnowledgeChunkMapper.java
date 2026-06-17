@@ -39,4 +39,8 @@ public interface AiKnowledgeChunkMapper {
 
     @Delete("DELETE FROM ai_knowledge_chunks WHERE doc_id = #{docId}")
     void deleteByDocId(@Param("docId") Long docId);
+
+    @Update("UPDATE ai_knowledge_chunks SET chunk_text=#{chunkText}, keywords=#{keywords}, " +
+            "embedding_ref=#{embeddingRef} WHERE id=#{id}")
+    void updateById(AiKnowledgeChunk chunk);
 }

@@ -22,14 +22,15 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: redis/redis-stack-server:latest
     container_name: aitrader-redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-123456} --maxmemory 128mb --maxmemory-policy allkeys-lru
+    command: redis-stack-server --requirepass ${REDIS_PASSWORD:-123456} --maxmemory 512mb
     volumes:
       - redis_data:/data
     ports:
       - "127.0.0.1:6380:6379"
+      - "127.0.0.1:8011:8001"
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-123456}", "ping"]
       interval: 5s

@@ -30,3 +30,11 @@ export interface Post {
   comments: number;
   isLiked: boolean;
 }
+
+export interface Comment {
+  id: number;
+  userName: string;
+  userAvatar?: string;
+  content: string;
+  time: string;
+}

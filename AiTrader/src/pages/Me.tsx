@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from "react-router-dom";
-import { Shield, Lock, Key, Percent, Info, ChevronRight, Edit2 } from "lucide-react"; 
+import { Lock, Info, ChevronRight, Edit2 } from "lucide-react"; 
 import { UserStats } from '../components/AssetCard'; 
 import { Avatar } from '../components/Avatar';
 import type { MenuItem } from '../types';
@@ -17,10 +17,7 @@ export const Me = () => {
   const [tempName, setTempName] = useState('');
 
   const menuItems: MenuItem[] = [
-    { icon: Shield, label: '身份认证', path: '/kyc' },
     { icon: Lock, label: '安全中心', path: '/security' },
-    { icon: Key, label: 'API 管理', path: '/api' },
-    { icon: Percent, label: '费率标准', path: '/fees' },
     { icon: Info, label: '关于我们', path: '/about' },
   ];
 
@@ -96,7 +93,7 @@ export const Me = () => {
 
   const handleMenuItemClick = (path: string) => {
     // 需要登录才能访问的页面列表
-    const protectedPaths = ['/kyc', '/security', '/api'];
+    const protectedPaths = ['/security'];
     
     if (protectedPaths.includes(path) && !user) {
       openAuthModal('login');

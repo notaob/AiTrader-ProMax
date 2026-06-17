@@ -240,6 +240,36 @@ public class LangGraphClient {
     }
 
     /**
+     * 同步知识 chunks 到 Python 向量索引（Java 保存 MySQL 后调用）
+     * userId 用于知识库按用户隔离
+     */
+    public boolean syncChunksToVectorStore(List<Map<String, Object>> chunkData, Long userId) {
+        try {
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("chunks", chunkData);
+            requestBody.put("user_id", userId);
+
+            HttpResponse response = HttpRequest.post(agentServiceUrl + "/rag/sync")
+                    .header("Content-Type", "application/json")
+                    .body(JSONUtil.toJsonStr(requestBody))
+                    .timeout(30000)
+                    .execute();
+
+            if (response.getStatus() == 200) {
+                Map<String, Object> result = JSONUtil.parseObj(response.body());
+                log.info("同步 {} 条 chunks 到向量索引", result.get("synced_count"));
+                return true;
+            } else {
+                log.warn("同步向量索引失败: HTTP {}", response.getStatus());
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("调用向量同步接口失败", e);
+            return false;
+        }
+    }
+
+    /**
      * 健康检查
      */
     public boolean healthCheck() {

@@ -279,7 +279,7 @@ export const AIChat = () => {
       setMemoriesLoading(false);
     }
     try {
-      const docData = await knowledgeService.getKnowledgeDocs();
+      const docData = await knowledgeService.getKnowledgeDocs(Number(user?.id) || 0);
       setKnowledgeDocs(docData || []);
     } catch (err: any) {
       setKnowledgeError(err?.message || '加载知识文档失败');
@@ -412,6 +412,7 @@ export const AIChat = () => {
                   loading={knowledgeLoading}
                   error={knowledgeError}
                   onRefresh={loadSidePanelData}
+                  userId={Number(user?.id) || 0}
                 />
               </div>
             </div>

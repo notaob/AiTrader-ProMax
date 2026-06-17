@@ -36,3 +36,7 @@ class RAGResponse(BaseModel):
 class GraphExecuteRequest(BaseModel):
     graph_type: str  # "trading" | "rag"
     inputs: Dict[str, Any]
+
+class SyncChunksRequest(BaseModel):
+    chunks: List[Dict[str, Any]]  # [{"text": "...", "mysql_chunk_id": 123, "source": "...", "chunk_index": 0}]
+    user_id: int = 0  # 用户ID，用于知识库按用户隔离

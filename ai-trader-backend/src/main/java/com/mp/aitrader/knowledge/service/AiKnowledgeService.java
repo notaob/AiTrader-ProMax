@@ -14,4 +14,6 @@ public interface AiKnowledgeService {
     List<AiKnowledgeChunk> getChunksByDocId(Long docId);
 
     List<AiKnowledgeChunk> searchKnowledge(String query, int limit);
+
+    void deleteDocument(Long docId, Long userId);
 }

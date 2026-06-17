@@ -32,6 +32,7 @@ create table if not exists ai_knowledge_docs
 (
     id          bigint auto_increment comment '主键'
         primary key,
+    user_id     bigint       null comment '用户ID（知识库按用户隔离）',
     doc_type    varchar(50)  not null comment '文档类型: strategy, term, rule, research',
     title       varchar(255) not null comment '文档标题',
     source      varchar(255) null comment '来源',

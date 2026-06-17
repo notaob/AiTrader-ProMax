@@ -2,6 +2,7 @@ import { request } from './request';
 
 export interface KnowledgeDoc {
   id: number;
+  userId: number;
   docType: string;
   title: string;
   source: string;
@@ -15,29 +16,33 @@ export interface Chunk {
   keywords: string;
 }
 
-export interface UploadDocPayload {
-  title: string;
-  docType: string;
-  content: string;
-}
-
 export const knowledgeService = {
-  getKnowledgeDocs: () => {
+  getKnowledgeDocs: (userId: number) => {
     return request<KnowledgeDoc[]>('/ai/knowledge', {
       method: 'GET',
+      params: { userId: String(userId) },
     });
   },
 
-  uploadKnowledgeDoc: (doc: UploadDocPayload) => {
+  uploadKnowledgeFile: (file: File, userId: number) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('userId', String(userId));
     return request<void>('/ai/knowledge/upload', {
       method: 'POST',
-      body: JSON.stringify(doc),
+      body: formData,
     });
   },
 
   getDocChunks: (docId: number) => {
     return request<Chunk[]>(`/ai/knowledge/${docId}/chunks`, {
       method: 'GET',
+    });
+  },
+
+  deleteKnowledgeDoc: (docId: number, userId: number) => {
+    return request<void>(`/ai/knowledge/${docId}?userId=${userId}`, {
+      method: 'DELETE',
     });
   },
 };

@@ -8,18 +8,19 @@ import java.util.List;
 @Mapper
 public interface AiKnowledgeDocMapper {
 
-    @Insert("INSERT INTO ai_knowledge_docs (doc_type, title, source, status, created_at, updated_at) " +
-            "VALUES (#{docType}, #{title}, #{source}, #{status}, NOW(), NOW())")
+    @Insert("INSERT INTO ai_knowledge_docs (user_id, doc_type, title, source, status, created_at, updated_at) " +
+            "VALUES (#{userId}, #{docType}, #{title}, #{source}, #{status}, NOW(), NOW())")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     void insert(AiKnowledgeDoc doc);
 
-    @Update("UPDATE ai_knowledge_docs SET doc_type = #{docType}, title = #{title}, source = #{source}, " +
+    @Update("UPDATE ai_knowledge_docs SET user_id = #{userId}, doc_type = #{docType}, title = #{title}, source = #{source}, " +
             "status = #{status}, updated_at = NOW() WHERE id = #{id}")
     void updateById(AiKnowledgeDoc doc);
 
     @Select("SELECT * FROM ai_knowledge_docs WHERE id = #{id}")
     @Results({
             @Result(property = "id", column = "id"),
+            @Result(property = "userId", column = "user_id"),
             @Result(property = "docType", column = "doc_type"),
             @Result(property = "title", column = "title"),
             @Result(property = "source", column = "source"),
@@ -32,6 +33,7 @@ public interface AiKnowledgeDocMapper {
     @Select("SELECT * FROM ai_knowledge_docs")
     @Results({
             @Result(property = "id", column = "id"),
+            @Result(property = "userId", column = "user_id"),
             @Result(property = "docType", column = "doc_type"),
             @Result(property = "title", column = "title"),
             @Result(property = "source", column = "source"),
@@ -44,6 +46,7 @@ public interface AiKnowledgeDocMapper {
     @Select("SELECT * FROM ai_knowledge_docs WHERE doc_type = #{docType}")
     @Results({
             @Result(property = "id", column = "id"),
+            @Result(property = "userId", column = "user_id"),
             @Result(property = "docType", column = "doc_type"),
             @Result(property = "title", column = "title"),
             @Result(property = "source", column = "source"),
@@ -52,4 +55,7 @@ public interface AiKnowledgeDocMapper {
             @Result(property = "updatedAt", column = "updated_at")
     })
     List<AiKnowledgeDoc> selectByType(@Param("docType") String docType);
+
+    @Delete("DELETE FROM ai_knowledge_docs WHERE id = #{id}")
+    int deleteById(@Param("id") Long id);
 }

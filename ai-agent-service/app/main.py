@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import time
 
-from app.models import ChatRequest, ChatResponse, RAGRequest, RAGResponse, GraphExecuteRequest
+from app.models import ChatRequest, ChatResponse, RAGRequest, RAGResponse, GraphExecuteRequest, SyncChunksRequest
 from app.graph.trading_graph import trading_graph
 from app.config import config
 from app.rag.rag_service import rag_service
@@ -196,6 +196,41 @@ async def clear_knowledge_base():
             "message": "知识库已清空" if success else "清空失败"
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/rag/sync")
+async def sync_chunks_to_vector_store(request: SyncChunksRequest):
+    """
+    Java 保存 chunks 到 MySQL 后，调此端点生成 embedding 并写入 Redis Stack 向量索引
+    """
+    try:
+        from app.rag.vector_store import vector_store, Document
+        from app.rag.embedding import embedding_service
+
+        texts = [c["text"] for c in request.chunks]
+        vectors = embedding_service.embed_batch(texts)
+
+        documents = []
+        for chunk, vector in zip(request.chunks, vectors):
+            doc = Document(
+                id=str(chunk["mysql_chunk_id"]),
+                content=chunk["text"],
+                source=chunk.get("source", ""),
+                vector=vector,
+                metadata={
+                    "mysql_chunk_id": chunk["mysql_chunk_id"],
+                    "chunk_index": chunk.get("chunk_index", 0),
+                    "user_id": request.user_id,
+                }
+            )
+            documents.append(doc)
+
+        synced = vector_store.add_documents(documents)
+        return {"success": True, "synced_count": synced}
+    except Exception as e:
+        import traceback
+        print(f"[sync_chunks] error: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

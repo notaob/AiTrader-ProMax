@@ -36,9 +36,7 @@ class EmbeddingService:
             embedding = data["output"]["embeddings"][0]["embedding"]
             return embedding
         except Exception as e:
-            print(f"Embedding 失败: {e}")
-            # 返回零向量作为 fallback
-            return [0.0] * self.vector_dimension
+            raise RuntimeError(f"Embedding 失败: {e}") from e
     
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
         """批量文本向量化"""
@@ -64,9 +62,7 @@ class EmbeddingService:
             embeddings = [item["embedding"] for item in data["output"]["embeddings"]]
             return embeddings
         except Exception as e:
-            print(f"批量 Embedding 失败: {e}")
-            # 返回零向量列表作为 fallback
-            return [[0.0] * self.vector_dimension for _ in texts]
+            raise RuntimeError(f"批量 Embedding 失败: {e}") from e
 
 # 单例
 embedding_service = EmbeddingService()

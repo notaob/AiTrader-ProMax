@@ -2,16 +2,21 @@ package com.mp.aitrader.service.impl;
 
 import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.mp.aitrader.DTO.CommentDTO;
 import com.mp.aitrader.DTO.MomentDTO;
 import com.mp.aitrader.DTO.MomentLikeDTO;
+import com.mp.aitrader.VO.CommentVO;
 import com.mp.aitrader.VO.MomentLikeVO;
 import com.mp.aitrader.VO.MomentVO;
 import com.mp.aitrader.VO.Result;
 import com.mp.aitrader.context.BaseContext;
 import com.mp.aitrader.domain.TbMoment;
+import com.mp.aitrader.domain.TbMomentComment;
 import com.mp.aitrader.domain.TbMomentLike;
 import com.mp.aitrader.domain.TbUser;
+import com.mp.aitrader.mapper.TbMomentCommentMapper;
 import com.mp.aitrader.mapper.TbMomentLikeMapper;
 import com.mp.aitrader.mapper.TbMomentMapper;
 import com.mp.aitrader.mapper.TbUserMapper;
@@ -37,13 +42,19 @@ public class TbMomentServiceImpl extends ServiceImpl<TbMomentMapper, TbMoment> i
     @Autowired
     private TbMomentLikeMapper momentLikeMapper;
 
+    @Autowired
+    private TbMomentCommentMapper momentCommentMapper;
+
     @Override
-    public Result<List<MomentVO>> getMomentList() {
+    public Result<List<MomentVO>> getMomentList(int page, int size) {
         Long currentUserId = BaseContext.getCurrentId();
-        
-        // 查询所有动态，按时间倒序
+
+        int offset = (page - 1) * size;
+
+        // 分页查询动态，按时间倒序
         QueryWrapper<TbMoment> queryWrapper = new QueryWrapper<>();
-        queryWrapper.orderByDesc("create_time");
+        queryWrapper.orderByDesc("create_time")
+                    .last("LIMIT " + size + " OFFSET " + offset);
         List<TbMoment> moments = momentMapper.selectList(queryWrapper);
 
         if (moments == null || moments.isEmpty()) {
@@ -134,6 +145,61 @@ public class TbMomentServiceImpl extends ServiceImpl<TbMomentMapper, TbMoment> i
         return Result.success(MomentLikeVO.builder()
                 .isLiked(isLiked)
                 .likes(moment.getLikes())
+                .build());
+    }
+
+    @Override
+    public Result<List<CommentVO>> getComments(Long momentId) {
+        QueryWrapper<TbMomentComment> wrapper = new QueryWrapper<>();
+        wrapper.eq("moment_id", momentId).orderByAsc("create_time");
+        List<TbMomentComment> comments = momentCommentMapper.selectList(wrapper);
+
+        List<CommentVO> voList = comments.stream().map(c -> {
+            TbUser user = userMapper.selectById(c.getUserId());
+            return CommentVO.builder()
+                    .id(c.getId())
+                    .userName(user != null ? user.getNickName() : "未知用户")
+                    .userAvatar(user != null ? user.getIcon() : "")
+                    .content(c.getContent())
+                    .time(DateUtil.format(c.getCreateTime(), "yyyy-MM-dd HH:mm"))
+                    .build();
+        }).collect(Collectors.toList());
+
+        return Result.success(voList);
+    }
+
+    @Override
+    @Transactional
+    public Result<CommentVO> addComment(CommentDTO commentDTO) {
+        Long userId = BaseContext.getCurrentId();
+        Long momentId = commentDTO.getMomentId();
+
+        TbMoment moment = momentMapper.selectById(momentId);
+        if (moment == null) {
+            return Result.error("动态不存在");
+        }
+
+        // 插入评论
+        TbMomentComment comment = new TbMomentComment();
+        comment.setMomentId(momentId);
+        comment.setUserId(userId);
+        comment.setContent(commentDTO.getContent());
+        comment.setCreateTime(new Date());
+        momentCommentMapper.insert(comment);
+
+        // 更新动态评论数 +1
+        UpdateWrapper<TbMoment> updateWrapper = new UpdateWrapper<>();
+        updateWrapper.eq("id", momentId).setSql("comments = comments + 1");
+        momentMapper.update(null, updateWrapper);
+
+        // 组装返回
+        TbUser user = userMapper.selectById(userId);
+        return Result.success(CommentVO.builder()
+                .id(comment.getId())
+                .userName(user != null ? user.getNickName() : "未知用户")
+                .userAvatar(user != null ? user.getIcon() : "")
+                .content(comment.getContent())
+                .time(DateUtil.format(comment.getCreateTime(), "yyyy-MM-dd HH:mm"))
                 .build());
     }
 }

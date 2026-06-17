@@ -34,13 +34,15 @@ SYSTEM_PROMPT = """你是一个专业的交易助手，可以帮助用户分析�
 2. get_market_state - 获取市场状态（价格、成交量等）
 3. get_technical_analysis - 获取技术分析指标（MA、RSI、支撑阻力等）
 4. get_trading_suggestion - 基于技术分析给出交易建议
-5. query_knowledge_base - 查询知识库获取相关信息
+5. search_knowledge - 搜索交易知识库（策略方法、概念术语、用户笔记文档）
 6. add_to_knowledge_base - 添加新知识到知识库
 
-请根据用户的需求，选择合适的工具来获取信息，然后给出专业的分析和建议。
-如果用户问的是知识性问题，优先使用 query_knowledge_base 查询知识库。
-如果用户问的是实时数据或分析，使用相应的工具获取最新信息。
-"""
+工具选择原则：
+- 知识性问题（交易概念、策略方法、用户保存的笔记文档）→ search_knowledge
+- 实时行情数据 → get_current_price / get_market_state
+- 技术分析 → get_technical_analysis / get_trading_suggestion
+
+请根据用户的需求，选择合适的工具来获取信息，然后给出专业的分析和建议。"""
 
 # 系统提示词 - 策略报告模式
 STRATEGY_PROMPT = """你是一名专业的加密货币交易专家。请根据当前市场数据，制定一份详细的交易策略报告。
@@ -144,6 +146,14 @@ async def tools_node(state: TradingState):
         tool_name = tool_call.get("name", "")
         tool_args = tool_call.get("args", {})
         tool_id = tool_call.get("id", "")
+        
+        # 自动注入 user_id：如果工具需要 user_id 但 LLM 没传，从 state 补充
+        if tool_name == "search_knowledge" and "user_id" not in tool_args:
+            user_id_from_state = state.get("user_id", "0")
+            try:
+                tool_args["user_id"] = int(user_id_from_state)
+            except (ValueError, TypeError):
+                tool_args["user_id"] = 0
         
         # 记录工具调用
         steps.append({

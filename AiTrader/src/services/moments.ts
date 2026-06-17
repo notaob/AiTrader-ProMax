@@ -1,16 +1,12 @@
 import { request } from './request';
-import type { Post } from '../types';
-
-// 定义 API 返回的列表结构，假设是分页的或者直接是数组
-// 根据 request.ts，request<T> 返回的是 data 字段
-// 这里假设 GET /moments/list 返回的是 Post[]
-// 如果是分页结构 { list: Post[], total: number }，需要调整
+import type { Post, Comment } from '../types';
 
 export const momentsService = {
-  // 获取动态列表
-  getList: () => {
+  // 获取动态列表（分页）
+  getList: (page = 1, size = 10) => {
     return request<Post[]>('/moments/list', {
       method: 'GET',
+      params: { page: String(page), size: String(size) },
     });
   },
 
@@ -27,6 +23,21 @@ export const momentsService = {
     return request<{ isLiked: boolean; likes: number }>('/moments/like', {
       method: 'POST',
       body: JSON.stringify({ id }),
+    });
+  },
+
+  // 获取评论列表
+  getComments: (momentId: number) => {
+    return request<Comment[]>(`/moments/${momentId}/comments`, {
+      method: 'GET',
+    });
+  },
+
+  // 发表评论
+  addComment: (momentId: number, content: string) => {
+    return request<Comment>('/moments/comment', {
+      method: 'POST',
+      body: JSON.stringify({ momentId, content }),
     });
   },
 };

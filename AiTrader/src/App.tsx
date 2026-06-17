@@ -9,7 +9,6 @@ import { ForgotPassword } from './pages/ForgotPassword'
 import { Register } from './pages/Register'
 import { Login } from './pages/Login'
 import { About } from './pages/About'
-import { Kyc } from './pages/Kyc'
 import { Modal } from './components/Modal'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { NewMoment } from './pages/NewMoment'
@@ -30,11 +29,6 @@ const AppContent = () => {
         <Route path="/me" element={<Me />} />
         <Route path="/about" element={<About />} />
         <Route path="/report" element={<StrategyReport />} />
-        <Route path="/kyc" element={
-          <ProtectedRoute>
-            <Kyc />
-          </ProtectedRoute>
-        } />
         <Route path="/security" element={
           <ProtectedRoute>
             <Security />

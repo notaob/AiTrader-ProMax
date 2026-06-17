@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { BookOpen, Upload, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { BookOpen, Upload, FileText, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { knowledgeService, type KnowledgeDoc, type Chunk } from '../services/knowledge';
 
 interface KnowledgePanelProps {
@@ -7,33 +7,33 @@ interface KnowledgePanelProps {
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
+  userId: number;
 }
 
-export const KnowledgePanel = ({ docs, loading, error, onRefresh }: KnowledgePanelProps) => {
+export const KnowledgePanel = ({ docs, loading, error, onRefresh, userId }: KnowledgePanelProps) => {
   const [uploading, setUploading] = useState(false);
-  const [showForm, setShowForm] = useState(false);
   const [selectedDocId, setSelectedDocId] = useState<number | null>(null);
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [chunksLoading, setChunksLoading] = useState(false);
 
-  const [form, setForm] = useState({
-    title: '',
-    docType: 'article',
-    content: '',
-  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleUpload = async () => {
-    if (!form.title.trim() || !form.content.trim()) return;
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
     setUploading(true);
     try {
-      await knowledgeService.uploadKnowledgeDoc(form);
-      setForm({ title: '', docType: 'article', content: '' });
-      setShowForm(false);
+      await knowledgeService.uploadKnowledgeFile(file, userId);
       onRefresh();
     } catch (error) {
       console.error('上传文档失败:', error);
     } finally {
       setUploading(false);
+      // 清空 input，允许重复上传同一文件
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -55,6 +55,21 @@ export const KnowledgePanel = ({ docs, loading, error, onRefresh }: KnowledgePan
     }
   };
 
+  const handleDeleteDoc = async (e: React.MouseEvent, docId: number, title: string) => {
+    e.stopPropagation();
+    if (!window.confirm(`确认删除「${title}」？`)) return;
+    try {
+      await knowledgeService.deleteKnowledgeDoc(docId, userId);
+      if (selectedDocId === docId) {
+        setSelectedDocId(null);
+        setChunks([]);
+      }
+      onRefresh();
+    } catch (error) {
+      console.error('删除文档失败:', error);
+    }
+  };
+
   return (
     <div style={{ padding: '16px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -62,110 +77,35 @@ export const KnowledgePanel = ({ docs, loading, error, onRefresh }: KnowledgePan
           <BookOpen size={18} color="#8884d8" />
           <span style={{ fontWeight: 'bold', fontSize: '15px' }}>知识库</span>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            padding: '6px 12px',
-            borderRadius: '4px',
-            border: 'none',
-            background: showForm ? '#666' : '#4CAF50',
-            color: '#fff',
-            fontSize: '12px',
-            cursor: 'pointer',
-          }}
-        >
-          <Upload size={12} />
-          {showForm ? '取消' : '上传文档'}
-        </button>
-      </div>
-
-      {showForm && (
-        <div style={{ background: '#2a2a2a', borderRadius: '8px', padding: '12px', marginBottom: '16px', border: '1px solid #333' }}>
-          <div style={{ marginBottom: '10px' }}>
-            <label style={{ display: 'block', fontSize: '12px', color: '#aaa', marginBottom: '4px' }}>标题</label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder="文档标题"
-              style={{
-                width: '100%',
-                padding: '8px 10px',
-                borderRadius: '4px',
-                border: '1px solid #444',
-                background: '#1e1e1e',
-                color: '#fff',
-                fontSize: '13px',
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
-            />
-          </div>
-          <div style={{ marginBottom: '10px' }}>
-            <label style={{ display: 'block', fontSize: '12px', color: '#aaa', marginBottom: '4px' }}>类型</label>
-            <select
-              value={form.docType}
-              onChange={(e) => setForm({ ...form, docType: e.target.value })}
-              style={{
-                width: '100%',
-                padding: '8px 10px',
-                borderRadius: '4px',
-                border: '1px solid #444',
-                background: '#1e1e1e',
-                color: '#fff',
-                fontSize: '13px',
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
-            >
-              <option value="article">文章</option>
-              <option value="report">报告</option>
-              <option value="strategy">策略</option>
-              <option value="note">笔记</option>
-            </select>
-          </div>
-          <div style={{ marginBottom: '10px' }}>
-            <label style={{ display: 'block', fontSize: '12px', color: '#aaa', marginBottom: '4px' }}>内容</label>
-            <textarea
-              value={form.content}
-              onChange={(e) => setForm({ ...form, content: e.target.value })}
-              placeholder="输入文档内容..."
-              rows={5}
-              style={{
-                width: '100%',
-                padding: '8px 10px',
-                borderRadius: '4px',
-                border: '1px solid #444',
-                background: '#1e1e1e',
-                color: '#fff',
-                fontSize: '13px',
-                outline: 'none',
-                resize: 'vertical',
-                boxSizing: 'border-box',
-              }}
-            />
-          </div>
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt,.md"
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+          />
           <button
-            onClick={handleUpload}
-            disabled={uploading || !form.title.trim() || !form.content.trim()}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
             style={{
-              width: '100%',
-              padding: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '6px 12px',
               borderRadius: '4px',
               border: 'none',
-              background: uploading || !form.title.trim() || !form.content.trim() ? '#666' : '#4CAF50',
+              background: uploading ? '#666' : '#4CAF50',
               color: '#fff',
-              fontSize: '13px',
-              cursor: uploading || !form.title.trim() || !form.content.trim() ? 'not-allowed' : 'pointer',
+              fontSize: '12px',
+              cursor: uploading ? 'not-allowed' : 'pointer',
             }}
           >
-            {uploading ? '上传中...' : '确认上传'}
+            <Upload size={12} />
+            {uploading ? '上传中...' : '上传文档'}
           </button>
         </div>
-      )}
+      </div>
 
       {loading ? (
         <div style={{ textAlign: 'center', color: '#888', padding: '20px 0', fontSize: '13px' }}>加载中...</div>
@@ -217,6 +157,12 @@ export const KnowledgePanel = ({ docs, loading, error, onRefresh }: KnowledgePan
                   </div>
                 </div>
                 {selectedDocId === doc.id ? <ChevronUp size={14} color="#888" /> : <ChevronDown size={14} color="#888" />}
+                <Trash2
+                  size={14}
+                  color="#888"
+                  style={{ cursor: 'pointer', flexShrink: 0 }}
+                  onClick={(e) => handleDeleteDoc(e, doc.id, doc.title)}
+                />
               </div>
 
               {selectedDocId === doc.id && (

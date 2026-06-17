@@ -1,7 +1,9 @@
 package com.mp.aitrader.controller;
 
+import com.mp.aitrader.DTO.CommentDTO;
 import com.mp.aitrader.DTO.MomentDTO;
 import com.mp.aitrader.DTO.MomentLikeDTO;
+import com.mp.aitrader.VO.CommentVO;
 import com.mp.aitrader.VO.MomentLikeVO;
 import com.mp.aitrader.VO.MomentVO;
 import com.mp.aitrader.VO.Result;
@@ -22,17 +24,17 @@ public class MomentController {
     private TbMomentService momentService;
 
     /**
-     * 获取动态列表
-     * URL : GET /api/moments/list
+     * 获取动态列表（分页）
      */
     @GetMapping("/list")
-    public Result<List<MomentVO>> getMomentList() {
-        return momentService.getMomentList();
+    public Result<List<MomentVO>> getMomentList(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return momentService.getMomentList(page, size);
     }
 
     /**
      * 发布动态
-     * URL : POST /api/moments/create
      */
     @PostMapping("/create")
     public Result<TbMoment> createMoment(@RequestBody MomentDTO momentDTO) {
@@ -41,10 +43,25 @@ public class MomentController {
 
     /**
      * 点赞/取消点赞
-     * URL : POST /api/moments/like
      */
     @PostMapping("/like")
     public Result<MomentLikeVO> likeMoment(@RequestBody MomentLikeDTO momentLikeDTO) {
         return momentService.likeMoment(momentLikeDTO);
+    }
+
+    /**
+     * 获取评论列表
+     */
+    @GetMapping("/{id}/comments")
+    public Result<List<CommentVO>> getComments(@PathVariable("id") Long momentId) {
+        return momentService.getComments(momentId);
+    }
+
+    /**
+     * 发表评论
+     */
+    @PostMapping("/comment")
+    public Result<CommentVO> addComment(@RequestBody CommentDTO commentDTO) {
+        return momentService.addComment(commentDTO);
     }
 }

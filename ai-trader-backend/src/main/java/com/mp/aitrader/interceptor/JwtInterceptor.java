@@ -36,8 +36,10 @@ public class JwtInterceptor implements HandlerInterceptor {
         
         // 如果 token 为空
         if (token == null || token.isEmpty()) {
-            // 对于 /moments/list 接口，允许未登录访问 (实现可选登录)
-            if (request.getRequestURI().contains("/moments/list")) {
+            // 对于 /moments/list 和 GET /moments/*/comments 接口，允许未登录访问
+            String uri = request.getRequestURI();
+            if (uri.contains("/moments/list") ||
+                (uri.matches(".*/moments/\\d+/comments") && "GET".equalsIgnoreCase(request.getMethod()))) {
                 return true;
             }
             // 其他接口必须登录

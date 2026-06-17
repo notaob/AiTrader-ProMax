@@ -23,6 +23,18 @@ create table if not exists tb_moment_like
 )
     comment '动态点赞表';
 
+create table if not exists tb_moment_comment
+(
+    id          bigint auto_increment comment '主键'
+        primary key,
+    moment_id   bigint       not null comment '动态ID',
+    user_id     bigint       not null comment '评论用户ID',
+    content     varchar(500) not null comment '评论内容',
+    create_time datetime     null comment '创建时间',
+    index idx_moment_id (moment_id)
+)
+    comment '动态评论表';
+
 create table if not exists tb_promotion
 (
     id              bigint auto_increment comment '主键'
