@@ -149,6 +149,7 @@ Thumbs.db
 
 # ==================== Misc ====================
 HELP.md
+docker-compose.yml
 *.suo
 *.ntvs*
 *.njsproj
