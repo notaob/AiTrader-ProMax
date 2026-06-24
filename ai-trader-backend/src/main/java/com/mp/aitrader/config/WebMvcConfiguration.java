@@ -23,7 +23,7 @@ public class WebMvcConfiguration implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         log.info("开始注册自定义拦截器...");
         registry.addInterceptor(jwtInterceptor)
-                .addPathPatterns("/user/**", "/moments/**", "/ai/**", "/market/**")
+                .addPathPatterns("/user/**", "/moments/**", "/ai/**", "/market/**", "/api/**")
                 .excludePathPatterns(
                         "/user/login/**",
                         "/user/register",
@@ -31,7 +31,8 @@ public class WebMvcConfiguration implements WebMvcConfigurer {
                         "/user/login/sms",
                         "/user/resetPassword",
                         "/user/logout",
-                        "/market/promotions"
+                        "/market/promotions",
+                        "/market/btc/**"
                 );
 
     }

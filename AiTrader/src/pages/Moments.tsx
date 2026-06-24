@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, MessageCircle, Share2, Plus, Send, RefreshCw } from 'lucide-react';
+import { Heart, MessageCircle, Share2, RefreshCw } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import styles from './Moments.module.css';
 import { Avatar } from '../components/Avatar';
@@ -253,9 +253,7 @@ export const Moments = () => {
           <p className={styles.emptySubtext}>分享你的交易心得和看法</p>
         </div>
 
-        <button className={styles.fab} onClick={handleAddPost}>
-          <Plus size={24} />
-        </button>
+        <button className={styles.fab} onClick={handleAddPost}>+</button>
       </div>
     );
   }
@@ -370,24 +368,22 @@ export const Moments = () => {
 
               {/* 评论输入区 */}
               <div className={styles.commentInputRow}>
-                <div className={styles.commentInputWrapper}>
-                  <input
-                    ref={expandedPostId === post.id ? commentInputRef : null}
-                    type="text"
-                    className={styles.commentInput}
-                    placeholder="写评论..."
-                    value={expandedPostId === post.id ? commentInput : ''}
-                    onChange={(e) => setCommentInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendComment()}
-                    maxLength={500}
-                  />
-                </div>
+                <input
+                  ref={expandedPostId === post.id ? commentInputRef : null}
+                  type="text"
+                  className={styles.commentInput}
+                  placeholder="写评论..."
+                  value={expandedPostId === post.id ? commentInput : ''}
+                  onChange={(e) => setCommentInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendComment()}
+                  maxLength={500}
+                />
                 <button
-                  className={`${styles.sendButton} ${!sendingComment && commentInput.trim() && expandedPostId === post.id ? styles.sendConfirm : ''}`}
+                  className={styles.sendBtn}
                   onClick={handleSendComment}
                   disabled={!commentInput.trim() || sendingComment}
                 >
-                  {sendingComment ? '...' : <Send size={16} />}
+                  {sendingComment ? '发送中' : '发送'}
                 </button>
               </div>
             </div>
@@ -419,9 +415,7 @@ export const Moments = () => {
       </div>
 
       {/* FAB 悬浮发布按钮 */}
-      <button className={styles.fab} onClick={handleAddPost}>
-        <Plus size={24} />
-      </button>
+      <button className={styles.fab} onClick={handleAddPost}>+</button>
     </div>
   );
 };
