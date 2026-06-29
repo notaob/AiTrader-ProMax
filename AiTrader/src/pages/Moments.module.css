@@ -81,7 +81,9 @@
   background: linear-gradient(135deg, #4CAF50, #388E3C);
   border: none;
   color: #fff;
-  font-size: 24px;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -372,12 +374,12 @@
 .commentsSection {
   max-height: 0;
   opacity: 0;
-  overflow: hidden;
+  overflow: visible;
   transition: max-height 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease-in-out;
 }
 
 .commentsOpen {
-  max-height: 600px;
+  max-height: 2000px;
   opacity: 1;
 }
 
@@ -454,85 +456,49 @@
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.commentInputWrapper {
-  position: relative;
-  flex: 1;
-  border-radius: 22px;
-  padding: 1px;
-  background: linear-gradient(90deg, rgba(76,175,80,0.5), rgba(136,132,216,0.5), rgba(76,175,80,0.5));
-  background-size: 200% 100%;
-  animation: gradientShift 3s linear infinite;
-}
-
-@keyframes gradientShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
 .commentInput {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   background: #1e1e1e;
-  border: none;
-  border-radius: 21px;
+  border: 1px solid #333;
+  border-radius: 20px;
   padding: 8px 14px;
   color: #fff;
   font-size: 13px;
   outline: none;
-  transition: background 0.2s;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
 }
 
 .commentInput:focus {
-  background: #2a2a2a;
+  border-color: #4CAF50;
 }
 
 .commentInput::placeholder {
   color: #666;
 }
 
-.sendButton {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
+.sendBtn {
+  padding: 8px 16px;
+  border-radius: 20px;
   border: none;
   background: #4CAF50;
   color: #fff;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
-.sendButton:disabled {
+.sendBtn:disabled {
   background: #333;
   color: #666;
   cursor: not-allowed;
 }
 
-.sendButton:not(:disabled) {
-  animation: sendPulse 1.5s ease-in-out infinite;
-}
-
-.sendButton:not(:disabled):active {
-  transform: scale(0.85);
-  animation: none;
-}
-
-@keyframes sendPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-}
-
-.sendConfirm {
-  animation: sendBounce 0.3s ease-out;
-}
-
-@keyframes sendBounce {
-  0% { transform: scale(0.85); }
-  50% { transform: scale(1.15); }
-  100% { transform: scale(1); }
+.sendBtn:not(:disabled):active {
+  transform: scale(0.95);
 }
 
 /* ===== Load More — Dot Bounce ===== */

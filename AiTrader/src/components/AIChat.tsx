@@ -289,10 +289,10 @@ export const AIChat = () => {
   };
 
   useEffect(() => {
-    if (activeTab === 'knowledge') {
+    if (activeTab === 'knowledge' && user) {
       loadSidePanelData();
     }
-  }, [activeTab]);
+  }, [activeTab, user]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -361,7 +361,10 @@ export const AIChat = () => {
               策略报告
             </button>
             <button
-              onClick={() => setActiveTab('knowledge')}
+              onClick={() => {
+                if (!user) { openAuthModal('login'); return; }
+                setActiveTab('knowledge');
+              }}
               style={{
                 padding: '6px 16px',
                 borderRadius: '16px',

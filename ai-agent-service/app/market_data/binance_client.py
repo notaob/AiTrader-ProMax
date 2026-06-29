@@ -1,6 +1,7 @@
 import requests
 from typing import Dict, List
 from collections import deque
+from app.config import config
 
 
 class BinanceClient:
@@ -14,6 +15,14 @@ class BinanceClient:
         self._cache_time = {}
         self.cache_ttl = 5  # 缓存 5 秒
 
+        # HTTP 代理配置
+        if config.PROXY_ENABLE:
+            proxy_url = f"http://{config.PROXY_HOST}:{config.PROXY_PORT}"
+            self._proxies = {"http": proxy_url, "https": proxy_url}
+            print(f"币安客户端使用代理: {proxy_url}")
+        else:
+            self._proxies = None
+
     def _get(self, endpoint: str, params: dict = None, use_cache: bool = True) -> dict:
         """发送 GET 请求，带简单缓存"""
         cache_key = f"{endpoint}:{str(params)}"
@@ -26,7 +35,7 @@ class BinanceClient:
 
         # 发送请求
         url = f"{self.BASE_URL}{endpoint}"
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(url, params=params, timeout=10, proxies=self._proxies)
         response.raise_for_status()
         data = response.json()
 

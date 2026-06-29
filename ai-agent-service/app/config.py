@@ -21,6 +21,11 @@ class Config:
     # Java 后端
     JAVA_BACKEND_URL = os.getenv("JAVA_BACKEND_URL", "http://localhost:8080")
     
+    # HTTP 代理（用于访问 Binance 等受限 API）
+    PROXY_ENABLE = os.getenv("PROXY_ENABLE", "false").lower() == "true"
+    PROXY_HOST = os.getenv("PROXY_HOST", "127.0.0.1")
+    PROXY_PORT = os.getenv("PROXY_PORT", "7890")
+    
     # 服务配置
     PORT = int(os.getenv("PORT", "8000"))
 
