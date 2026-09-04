@@ -1,32 +1,54 @@
-import os
-from dotenv import load_dotenv
 from pathlib import Path
 
-# 强制加载 .env 文件，覆盖系统环境变量
-env_path = Path(__file__).parent.parent / '.env'
-load_dotenv(dotenv_path=env_path, override=True)
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-class Config:
-    # DashScope (阿里云)
-    DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
-    DASHSCOPE_BASE_URL = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-    DASHSCOPE_MODEL = os.getenv("DASHSCOPE_MODEL", "qwen3-max")
-    
-    # Redis (复用 Java 项目配置)
-    REDIS_HOST = os.getenv("REDIS_HOST", "127.0.0.1")
-    REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
-    REDIS_DB = int(os.getenv("REDIS_DB", "0"))
-    
-    # Java 后端
-    JAVA_BACKEND_URL = os.getenv("JAVA_BACKEND_URL", "http://localhost:8080")
-    
-    # HTTP 代理（用于访问 Binance 等受限 API）
-    PROXY_ENABLE = os.getenv("PROXY_ENABLE", "false").lower() == "true"
-    PROXY_HOST = os.getenv("PROXY_HOST", "127.0.0.1")
-    PROXY_PORT = os.getenv("PROXY_PORT", "7890")
-    
-    # 服务配置
-    PORT = int(os.getenv("PORT", "8000"))
+# 项目根目录 = ai-agent-service/
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+ENV_FILE = PROJECT_DIR / ".env"
 
-config = Config()
+
+class AppSettings(BaseSettings):
+    """ai-agent-service 配置（环境变量 / .env 文件加载）。
+
+    - 环境变量 > .env 文件 > 字段默认值
+    - 必填字段缺失时启动即抛 ValidationError（避免带着空 key 上线）
+    """
+
+    # --- DashScope (阿里云 / OpenAI 兼容网关) ---
+    DASHSCOPE_API_KEY: str  # 必填：缺失则启动报错
+    DASHSCOPE_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    DASHSCOPE_MODEL: str = "qwen3.8-flash"
+
+    # --- Redis (与 Java 后端共享) ---
+    REDIS_HOST: str = "127.0.0.1"
+    REDIS_PORT: int = 6379
+    REDIS_PASSWORD: str = ""
+    REDIS_DB: int = 0
+    # 向量存储模式：auto=探测 RediSearch，有则真 HNSW、无则内存降级；memory=强制内存；redis=强制真实索引(不可用即启动报错)
+    REDIS_VECTOR_MODE: str = "auto"
+
+    # --- Java 后端 ---
+    JAVA_BACKEND_URL: str = "http://localhost:8080"
+
+    # --- HTTP 代理（访问 Binance 等受限 API）---
+    PROXY_ENABLE: bool = False
+    PROXY_HOST: str = "127.0.0.1"
+    PROXY_PORT: int = 7890
+
+    # --- Langfuse 观测（可选，缺 key 时静默降级）---
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+    LANGFUSE_HOST: str = "https://cloud.langfuse.com"
+
+    # --- 服务配置 ---
+    PORT: int = 8000
+
+    model_config = SettingsConfigDict(
+        env_file=str(ENV_FILE),
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+
+config = AppSettings()

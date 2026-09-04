@@ -1,0 +1,32 @@
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+deploy_log.txt
+rebuild*.txt
+
+# IDE
+.idea/
+.vscode/
+
+# Node
+**/node_modules/
+**/dist/
+
+# Java
+**/target/
+**/*.class
+
+# Python
+**/__pycache__/
+**/*.pyc
+__pycache__/
+
+# Docker
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db

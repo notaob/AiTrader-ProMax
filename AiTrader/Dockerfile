@@ -1,14 +1,14 @@
-# 使用 Nginx 作为基础镜像
+# 多阶段构建：先编译前端，再用 Nginx 托管
+FROM node:20-alpine AS build
+WORKDIR /app
+ENV NODE_ENV=development
+COPY package.json package-lock.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
 FROM nginx:alpine
-
-# 复制构建产物到 Nginx 默认目录
-COPY dist /usr/share/nginx/html
-
-# 复制自定义 Nginx 配置文件
+COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# 暴露 80 端口
 EXPOSE 80
-
-# 启动 Nginx
 CMD ["nginx", "-g", "daemon off;"]

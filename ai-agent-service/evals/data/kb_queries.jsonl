@@ -1,0 +1,60 @@
+{"id": "kbq-001", "query": "比特币总共能挖出多少枚？有没有上限？", "expected": ["fact-btc-supply"]}
+{"id": "kbq-002", "query": "现在挖出一个区块奖励几个比特币？", "expected": ["fact-btc-supply"]}
+{"id": "kbq-003", "query": "以太坊现在还需要矿机挖矿出块吗？", "expected": ["fact-eth-pos"]}
+{"id": "kbq-004", "query": "大跌的时候我把手里的币换成什么能避险？", "expected": ["fact-stablecoin"]}
+{"id": "kbq-005", "query": "为什么有人说玩合约会把本金亏光？", "expected": ["fact-futures-risk"]}
+{"id": "kbq-006", "query": "长期持有比特币该用现货还是开合约仓位？", "expected": ["fact-spot-long"]}
+{"id": "kbq-007", "query": "我看空后市，想靠下跌赚钱有什么办法？", "expected": ["fact-short"]}
+{"id": "kbq-008", "query": "哪些小币种波动特别大、不能重仓？", "expected": ["fact-altcoin-vol"]}
+{"id": "kbq-009", "query": "RSI、MACD 这些技术指标能直接预测涨跌吗？", "expected": ["fact-indicators"]}
+{"id": "kbq-010", "query": "AI 助手能记住我喜欢买现货不吃合约这个习惯吗？", "expected": ["fact-ai-scenes"]}
+{"id": "kbq-011", "query": "交易策略报告固定包含哪几部分内容？", "expected": ["fact-report-chapters"]}
+{"id": "kbq-012", "query": "K 线图支持周线吗？价格多久更新一次？", "expected": ["fact-kline-refresh"]}
+{"id": "kbq-013", "query": "AI 记住的关于我的东西，我自己能查看和删掉吗？", "expected": ["fact-memory-manage"]}
+{"id": "kbq-014", "query": "平台问我的投资风格问卷问题有什么用？", "expected": ["fact-profile-guide"]}
+{"id": "kbq-015", "query": "我之前定过一条止损纪律，AI 会不会记混了旧的那条？", "expected": ["fact-constraint-rule"]}
+{"id": "kbq-016", "query": "你们页面上显示的币价是从哪个交易所来的？", "expected": ["fact-market-source"]}
+{"id": "kbq-017", "query": "我本金 10 万，单笔最多亏多少钱就该离场？", "expected": ["fact-risk-2pct"]}
+{"id": "kbq-018", "query": "刚入门有什么仓位和杠杆上的红线？", "expected": ["fact-newbie-dicipline"]}
+{"id": "kbq-019", "query": "我不会看买点，想每个月固定买点比特币怎么操作？", "expected": ["fact-dca"]}
+{"id": "kbq-020", "query": "跌了就一直加仓摊低成本，这种做法对吗？", "expected": ["fact-pyramid-avg"]}
+{"id": "kbq-021", "query": "我买的币涨了 30%，要不要先卖一部分？", "expected": ["fact-take-profit"]}
+{"id": "kbq-022", "query": "币价跌破我买入价的 5% 该怎么处理？", "expected": ["fact-stop-loss-line"]}
+{"id": "kbq-023", "query": "一个币最多占我总资产多少比例合适？", "expected": ["fact-position-limit"]}
+{"id": "kbq-024", "query": "我想用合约加杠杆，又怕爆仓，合约和现货的区别到底在哪？", "expected": ["fact-futures-risk", "fact-spot-long"]}
+{"id": "kbq-025", "query": "新手想在牛市稳健赚点钱，既要长期买又怕跌太多，该怎么兼顾定投和止损？", "expected": ["fact-dca", "fact-stop-loss-line"]}
+{"id": "kbq-026", "query": "比特币的数量是固定的吗？会不会像法币一样被无限增发？", "expected": ["fact-btc-supply"]}
+{"id": "kbq-027", "query": "比特币大概多久减半一次？减半后每个区块的奖励会变成多少？", "expected": ["fact-btc-supply"]}
+{"id": "kbq-028", "query": "以太坊现在出块还需要拼算力吗？", "expected": ["fact-eth-pos"]}
+{"id": "kbq-029", "query": "以太坊网络很堵的时候为什么转账费用会变贵？", "expected": ["fact-eth-pos"]}
+{"id": "kbq-030", "query": "USDT、USDC 这些稳定币为什么价格几乎不动？", "expected": ["fact-stablecoin"]}
+{"id": "kbq-031", "query": "大家常说的把资产换成稳定币避险，具体是怎么回事？", "expected": ["fact-stablecoin"]}
+{"id": "kbq-032", "query": "合约的强制平仓是怎么触发的？亏损到什么程度会被系统平掉？", "expected": ["fact-futures-risk"]}
+{"id": "kbq-033", "query": "用很小本金开很大的杠杆仓位，风险主要在哪里？", "expected": ["fact-futures-risk"]}
+{"id": "kbq-034", "query": "现货买入后会像合约那样被强制平仓吗？适合怎么用？", "expected": ["fact-spot-long"]}
+{"id": "kbq-035", "query": "现货长期持有需要付持仓利息吗？会爆仓吗？", "expected": ["fact-spot-long"]}
+{"id": "kbq-036", "query": "判断行情要跌，可以怎么从中获利？", "expected": ["fact-short"]}
+{"id": "kbq-037", "query": "做空是不是要先借币卖掉，等便宜了再买回来？看错了会怎样？", "expected": ["fact-short"]}
+{"id": "kbq-038", "query": "为什么建议不要用太多仓位参与山寨币？", "expected": ["fact-altcoin-vol"]}
+{"id": "kbq-039", "query": "小币种买卖时的滑点为什么通常比主流币大？", "expected": ["fact-altcoin-vol"]}
+{"id": "kbq-040", "query": "RSI 数值到多少算超买、多少算超卖？", "expected": ["fact-indicators"]}
+{"id": "kbq-041", "query": "单独看技术指标能判断买卖点吗？", "expected": ["fact-indicators"]}
+{"id": "kbq-042", "query": "我在普通聊天里说过自己偏爱现货长线，AI 之后会记得吗？", "expected": ["fact-ai-scenes"]}
+{"id": "kbq-043", "query": "AI 助手一共有哪几种对话场景？", "expected": ["fact-ai-scenes"]}
+{"id": "kbq-044", "query": "一份交易策略报告由哪几个章节组成？", "expected": ["fact-report-chapters"]}
+{"id": "kbq-045", "query": "AI 给我生成的交易计划有没有固定模板？通常包含什么？", "expected": ["fact-report-chapters"]}
+{"id": "kbq-046", "query": "行情页的币价一般隔多久自动刷新一次？", "expected": ["fact-kline-refresh"]}
+{"id": "kbq-047", "query": "K 线图支持 1 分钟、4 小时这些周期吗？", "expected": ["fact-kline-refresh"]}
+{"id": "kbq-048", "query": "想看得久一点，K 线图能切到周线级别吗？", "expected": ["fact-kline-refresh"]}
+{"id": "kbq-049", "query": "我不想让 AI 记住某条投资偏好了，在哪里能删掉？", "expected": ["fact-memory-manage"]}
+{"id": "kbq-050", "query": "有没有一个页面能查看 AI 给我保存的长期记忆？", "expected": ["fact-memory-manage"]}
+{"id": "kbq-051", "query": "投资风格画像的测评问卷一般会问哪些问题？", "expected": ["fact-profile-guide"]}
+{"id": "kbq-052", "query": "做完画像测评后，AI 给我的建议会发生什么变化？", "expected": ["fact-profile-guide"]}
+{"id": "kbq-053", "query": "我改过止损纪律，AI 会不会还用被我改掉的那条旧规则？", "expected": ["fact-constraint-rule"]}
+{"id": "kbq-054", "query": "风控类的安全规则在长期记忆里一般保留几条？", "expected": ["fact-constraint-rule"]}
+{"id": "kbq-055", "query": "你们页面的币价数据是从交易所直接实时取的吗？", "expected": ["fact-market-source"]}
+{"id": "kbq-056", "query": "页面上显示的价格和实际成交价格大概差多久？", "expected": ["fact-market-source"]}
+{"id": "kbq-057", "query": "我的总资金是 20 万，单笔亏损设置多少以内比较安全？", "expected": ["fact-risk-2pct"]}
+{"id": "kbq-058", "query": "我是新手，想借钱加杠杆快速翻本，这样做风险大吗？", "expected": ["fact-newbie-dicipline", "fact-futures-risk"]}
+{"id": "kbq-059", "query": "定投是怎么摊平买入成本的？适合什么样的资产？", "expected": ["fact-dca"]}
+{"id": "kbq-060", "query": "下跌时想补仓摊成本，是一次性把子弹打光还是分批少量加？跌破关键位还硬扛着补对吗？", "expected": ["fact-pyramid-avg", "fact-stop-loss-line"]}

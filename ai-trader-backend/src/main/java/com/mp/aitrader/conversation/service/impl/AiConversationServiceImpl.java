@@ -13,10 +13,14 @@ import com.mp.aitrader.domain.TbUser;
 import com.mp.aitrader.mapper.TbUserMapper;
 import com.mp.aitrader.memory.domain.AiUserMemory;
 import com.mp.aitrader.memory.service.AiMemoryService;
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -282,101 +286,22 @@ public class AiConversationServiceImpl implements AiConversationService {
                     .build();
         }
 
-        List<AiMessage> recentMessages = messageMapper.selectRecentMessages(conversationId, 8);
-        AiSessionState sessionState = sessionStateMapper.selectByConversationId(conversationId);
-        AiConversationSummary latestSummary = summaryMapper.selectLatestByConversationId(conversationId);
-
-        List<Map<String, String>> history = recentMessages.stream()
-                .map(msg -> {
-                    Map<String, String> map = new HashMap<>();
-                    map.put("role", msg.getRole());
-                    map.put("content", msg.getContent());
-                    return map;
-                })
-                .collect(Collectors.toList());
-
-        Map<String, Object> state = new HashMap<>();
-        if (sessionState != null) {
-            state.put("current_mode", sessionState.getCurrentMode());
-            state.put("current_step", sessionState.getCurrentStep());
-            state.put("current_intent", sessionState.getCurrentIntent());
-            if (sessionState.getStateJson() != null) {
-                state.put("state_json", sessionState.getStateJson());
-            }
-        }
-
-        List<String> summaries = new ArrayList<>();
-        if (latestSummary != null) {
-            summaries.add(latestSummary.getSummaryText());
-        }
-
-        // 召回用户长期记忆
-        List<String> memoryTexts;
-        boolean isStrategy = "strategy".equals(mode);
-
-        if (isStrategy) {
-            // 策略模式：拉取所有活跃记忆（模板消息无法做关键词匹配）
-            List<AiUserMemory> allMemories = memoryService.getUserMemories(userId);
-            memoryTexts = allMemories.stream()
-                    .map(AiUserMemory::getContent)
-                    .collect(Collectors.toList());
-            log.info("策略模式为用户 {} 加载全部 {} 条记忆", userId, memoryTexts.size());
-        } else {
-            // 聊天模式：基于消息内容关键词召回
-            List<AiUserMemory> userMemories = memoryService.recallMemories(userId, userMessage, 5);
-            memoryTexts = userMemories.stream()
-                    .map(AiUserMemory::getContent)
-                    .collect(Collectors.toList());
-            log.info("聊天模式为用户 {} 召回 {} 条记忆", userId, memoryTexts.size());
-        }
+        ChatContext chatContext = buildChatContext(conversationId, userId, userMessage, mode);
 
         LangGraphChatResult chatResult = langGraphClient.chatWithContext(
                 userMessage,
                 userId.toString(),
                 "conversation_" + conversationId,
-                history,
-                state,
-                summaries,
-                memoryTexts,
+                chatContext.history,
+                chatContext.state,
+                chatContext.summaries,
+                chatContext.memoryTexts,
                 mode
         );
 
         String reply = chatResult.getAnswer();
 
-        Integer newMaxIndex = messageMapper.selectMaxMessageIndex(conversationId);
-        int assistantIndex = (newMaxIndex != null ? newMaxIndex : 0) + 1;
-
-        AiMessage assistantMsg = new AiMessage();
-        assistantMsg.setConversationId(conversationId);
-        assistantMsg.setRole("assistant");
-        assistantMsg.setContent(reply);
-        assistantMsg.setMessageIndex(assistantIndex);
-        messageMapper.insert(assistantMsg);
-
-        sessionStateService.updateSessionState(conversationId, userMessage, reply);
-
-        if (summaryService.shouldCreateSummary(conversationId)) {
-            summaryService.generateAndSaveSummary(conversationId);
-        }
-
-        // 记忆处理：仅 chat 模式用 AI 分类结果保存记忆（每类只保留最新），strategy 模式跳过
-        if (!isStrategy) {
-            try {
-                List<TypedMemoryCandidate> typedCandidates = chatResult.getTypedMemoryCandidates();
-                if (typedCandidates != null && !typedCandidates.isEmpty()) {
-                    for (TypedMemoryCandidate candidate : typedCandidates) {
-                        memoryService.saveChatMemory(userId, candidate.getContent(), candidate.getMemoryType());
-                    }
-                    log.info("为用户 {} 保存 {} 条 AI 分类记忆", userId, typedCandidates.size());
-                }
-            } catch (Exception e) {
-                log.warn("记忆持久化异常，不影响对话结果: {}", e.getMessage());
-            }
-        }
-
-        AiConversation conversation = conversationMapper.selectById(conversationId);
-        conversation.setLastMessageAt(LocalDateTime.now());
-        conversationMapper.update(conversation);
+        persistAiReply(conversationId, userId, userMessage, reply, mode, chatResult.getTypedMemoryCandidates());
 
         return ChatResponse.builder()
                 .reply(reply)
@@ -423,5 +348,313 @@ public class AiConversationServiceImpl implements AiConversationService {
                 .messageIndex(message.getMessageIndex())
                 .createdAt(message.getCreatedAt())
                 .build();
+    }
+
+    // ============================ Stage 3 流式对话 ============================
+
+    /**
+     * 流式对话编排（controller 在独立线程执行）。
+     * 与同步 chat() 共享 buildChatContext / persistAiReply，保证两路上下文与落库一致。
+     */
+    @Override
+    public void runChatStream(Long conversationId, Long userId, ChatMessageRequest request, SseEmitter emitter) {
+        String userMessage = request.getMessage();
+        String mode = request.getMode();
+
+        // strategy 模式（含画像引导 / 机会扣减等本地应答）：委托同步 chat() 整包返回。
+        // 不在此复制分支文案，杜绝同步/流式双写漂移；前端收到无 token 的 done 帧即整包渲染。
+        if ("strategy".equals(mode)) {
+            try {
+                ChatResponse local = chat(conversationId, userId, request);
+                sendDoneFrame(emitter, local);
+            } catch (Exception e) {
+                log.error("流式委托同步 strategy 失败: conversation={}", conversationId, e);
+                sendErrorFrame(emitter, "AI 服务繁忙，请稍后再试。");
+            } finally {
+                safeComplete(emitter);
+            }
+            return;
+        }
+
+        // ============ chat 模式：真流式 ============
+        Long userMsgId = null;
+        try {
+            // 1) 用户消息落库（与同步 chat() 完全一致）
+            Integer maxIndex = messageMapper.selectMaxMessageIndex(conversationId);
+            int nextIndex = (maxIndex != null ? maxIndex : 0) + 1;
+            AiMessage userMsg = new AiMessage();
+            userMsg.setConversationId(conversationId);
+            userMsg.setRole("user");
+            userMsg.setContent(userMessage);
+            userMsg.setMessageIndex(nextIndex);
+            messageMapper.insert(userMsg);
+            userMsgId = userMsg.getId();
+
+            // 2) 组装上下文（chat 模式，与同步共享）
+            ChatContext ctx = buildChatContext(conversationId, userId, userMessage, "chat");
+
+            // 3) 流式调用 Python，逐帧转发 token/tool
+            StringBuilder tokenBuffer = new StringBuilder();
+            List<TypedMemoryCandidate> typedCandidates = new ArrayList<>();
+            String[] doneAnswer = new String[1];
+            boolean[] failed = new boolean[1];
+            boolean[] anyFrameSent = new boolean[1];
+
+            try {
+                langGraphClient.chatWithContextStream(
+                        userMessage,
+                        userId.toString(),
+                        "conversation_" + conversationId,
+                        ctx.history,
+                        ctx.state,
+                        ctx.summaries,
+                        ctx.memoryTexts,
+                        "chat",
+                        frame -> handleStreamFrame(frame, emitter, tokenBuffer, typedCandidates,
+                                doneAnswer, failed, anyFrameSent));
+            } catch (Exception e) {
+                log.warn("流式对话中断: conversation={}, err={}", conversationId, e.getMessage());
+                failed[0] = true;
+            }
+
+            // 4) 结果归一：优先 done 帧 answer；异常时降级
+            String reply = doneAnswer[0];
+            if (reply == null || reply.isBlank()) {
+                if (!anyFrameSent[0]) {
+                    // 4a) 一个帧都没到（连接即失败）：降级同步非流式整包
+                    log.info("流式无任何帧，降级同步路径: conversation={}", conversationId);
+                    LangGraphChatResult fallback = langGraphClient.chatWithContext(
+                            userMessage,
+                            userId.toString(),
+                            "conversation_" + conversationId,
+                            ctx.history,
+                            ctx.state,
+                            ctx.summaries,
+                            ctx.memoryTexts,
+                            "chat");
+                    reply = fallback.getAnswer();
+                    if (typedCandidates.isEmpty() && fallback.getTypedMemoryCandidates() != null) {
+                        typedCandidates.addAll(fallback.getTypedMemoryCandidates());
+                    }
+                } else {
+                    // 4b) 已收到部分 token 但无 done：以已收内容收尾（不重放同步，避免内容重复）
+                    reply = tokenBuffer.toString();
+                    if (reply.isBlank()) {
+                        reply = "AI 服务繁忙，请稍后再试。";
+                    }
+                }
+            }
+
+            // 5) 收尾落库（assistant + 会话状态 + 摘要 + AI 分类记忆），与同步路径一致
+            persistAiReply(conversationId, userId, userMessage, reply, "chat", typedCandidates);
+
+            // 6) 结果帧
+            if (reply == null || reply.isBlank() || failed[0] || (doneAnswer[0] == null && anyFrameSent[0])) {
+                if (anyFrameSent[0] && doneAnswer[0] == null) {
+                    sendErrorFrame(emitter, "回答已中断，请查看已生成内容或重试。");
+                } else if (reply != null && !reply.isBlank()) {
+                    sendDoneFrame(emitter, ChatResponse.builder().reply(reply).conversationId(conversationId).build());
+                } else {
+                    sendErrorFrame(emitter, "AI 服务繁忙，请稍后再试。");
+                }
+            } else {
+                sendDoneFrame(emitter, ChatResponse.builder().reply(reply).conversationId(conversationId).build());
+            }
+        } catch (Exception e) {
+            log.error("流式编排异常: conversation={}", conversationId, e);
+            sendErrorFrame(emitter, "AI 服务繁忙，请稍后再试。");
+            // 用户消息已插入但 assistant 未落库：删除避免悬挂消息
+            if (userMsgId != null) {
+                try {
+                    messageMapper.deleteById(userMsgId);
+                } catch (Exception ignored) {
+                    log.warn("清理悬挂用户消息失败: id={}", userMsgId);
+                }
+            }
+        } finally {
+            safeComplete(emitter);
+        }
+    }
+
+    private void handleStreamFrame(JSONObject frame, SseEmitter emitter, StringBuilder tokenBuffer,
+                                   List<TypedMemoryCandidate> typedCandidates, String[] doneAnswer,
+                                   boolean[] failed, boolean[] anyFrameSent) throws Exception {
+        String type = frame.getStr("type");
+        switch (type == null ? "" : type) {
+            case "token" -> {
+                String content = frame.getStr("content");
+                if (content != null && !content.isEmpty()) {
+                    tokenBuffer.append(content);
+                    anyFrameSent[0] = true;
+                    emitter.send(JSONUtil.toJsonStr(frame));
+                }
+            }
+            case "tool" -> {
+                anyFrameSent[0] = true;
+                emitter.send(JSONUtil.toJsonStr(frame));
+            }
+            case "done" -> {
+                doneAnswer[0] = frame.getStr("answer");
+                JSONArray typed = frame.getJSONArray("memory_candidates_typed");
+                if (typed != null) {
+                    for (int i = 0; i < typed.size(); i++) {
+                        JSONObject item = typed.getJSONObject(i);
+                        String content = item.getStr("content");
+                        if (content != null && !content.isEmpty()) {
+                            typedCandidates.add(TypedMemoryCandidate.builder()
+                                    .content(content)
+                                    .memoryType(item.getStr("type") != null ? item.getStr("type") : "preference")
+                                    .build());
+                        }
+                    }
+                }
+            }
+            case "error" -> failed[0] = true;
+            default -> log.debug("忽略未知 SSE 帧类型: {}", type);
+        }
+    }
+
+    private void sendDoneFrame(SseEmitter emitter, ChatResponse response) throws Exception {
+        JSONObject done = new JSONObject();
+        done.set("type", "done");
+        done.set("answer", response.getReply());
+        done.set("conversationId", response.getConversationId());
+        done.set("remainingChance", response.getRemainingChance());
+        if (response.getProfileOptions() != null && !response.getProfileOptions().isEmpty()) {
+            JSONArray opts = new JSONArray();
+            for (ProfileOption option : response.getProfileOptions()) {
+                JSONObject item = new JSONObject();
+                item.set("label", option.getLabel());
+                item.set("value", option.getValue());
+                opts.add(item);
+            }
+            done.set("profileOptions", opts);
+        }
+        emitter.send(JSONUtil.toJsonStr(done));
+    }
+
+    private void sendErrorFrame(SseEmitter emitter, String message) {
+        try {
+            JSONObject error = new JSONObject();
+            error.set("type", "error");
+            error.set("message", message);
+            emitter.send(JSONUtil.toJsonStr(error));
+        } catch (Exception e) {
+            log.warn("发送 error 帧失败（客户端可能已断开）: {}", e.getMessage());
+        }
+    }
+
+    private void safeComplete(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (Exception ignored) {
+            // 客户端已断开时 complete 可能抛异常，忽略
+        }
+    }
+
+    /**
+     * 共享上下文构建（同步 chat() 与流式 runChatStream 同源，防止双写漂移）。
+     */
+    private ChatContext buildChatContext(Long conversationId, Long userId, String userMessage, String mode) {
+        List<AiMessage> recentMessages = messageMapper.selectRecentMessages(conversationId, 8);
+        AiSessionState sessionState = sessionStateMapper.selectByConversationId(conversationId);
+        AiConversationSummary latestSummary = summaryMapper.selectLatestByConversationId(conversationId);
+
+        List<Map<String, String>> history = recentMessages.stream()
+                .map(msg -> {
+                    Map<String, String> map = new HashMap<>();
+                    map.put("role", msg.getRole());
+                    map.put("content", msg.getContent());
+                    return map;
+                })
+                .collect(Collectors.toList());
+
+        Map<String, Object> state = new HashMap<>();
+        if (sessionState != null) {
+            state.put("current_mode", sessionState.getCurrentMode());
+            state.put("current_step", sessionState.getCurrentStep());
+            state.put("current_intent", sessionState.getCurrentIntent());
+            if (sessionState.getStateJson() != null) {
+                state.put("state_json", sessionState.getStateJson());
+            }
+        }
+
+        List<String> summaries = new ArrayList<>();
+        if (latestSummary != null) {
+            summaries.add(latestSummary.getSummaryText());
+        }
+
+        List<String> memoryTexts;
+        if ("strategy".equals(mode)) {
+            List<AiUserMemory> allMemories = memoryService.getUserMemories(userId);
+            memoryTexts = allMemories.stream()
+                    .map(AiUserMemory::getContent)
+                    .collect(Collectors.toList());
+            log.info("策略模式为用户 {} 加载全部 {} 条记忆", userId, memoryTexts.size());
+        } else {
+            List<AiUserMemory> userMemories = memoryService.recallMemories(userId, userMessage, 5);
+            memoryTexts = userMemories.stream()
+                    .map(AiUserMemory::getContent)
+                    .collect(Collectors.toList());
+            log.info("聊天模式为用户 {} 召回 {} 条记忆", userId, memoryTexts.size());
+        }
+
+        return new ChatContext(history, state, summaries, memoryTexts);
+    }
+
+    /**
+     * 共享收尾落库（同步 chat() 与流式 runChatStream 同源）。
+     * 同步端点原有逻辑：assistant 落库 → 会话状态 → 摘要 → AI 分类记忆(仅 chat) → 会话时间戳。
+     */
+    private void persistAiReply(Long conversationId, Long userId, String userMessage, String reply,
+                                String mode, List<TypedMemoryCandidate> typedCandidates) {
+        Integer newMaxIndex = messageMapper.selectMaxMessageIndex(conversationId);
+        int assistantIndex = (newMaxIndex != null ? newMaxIndex : 0) + 1;
+
+        AiMessage assistantMsg = new AiMessage();
+        assistantMsg.setConversationId(conversationId);
+        assistantMsg.setRole("assistant");
+        assistantMsg.setContent(reply);
+        assistantMsg.setMessageIndex(assistantIndex);
+        messageMapper.insert(assistantMsg);
+
+        sessionStateService.updateSessionState(conversationId, userMessage, reply);
+
+        if (summaryService.shouldCreateSummary(conversationId)) {
+            summaryService.generateAndSaveSummary(conversationId);
+        }
+
+        // 记忆处理：仅 chat 模式用 AI 分类结果保存（constraint 保留最新；preference/goal 语义去重），strategy 跳过
+        if (!"strategy".equals(mode)) {
+            try {
+                if (typedCandidates != null && !typedCandidates.isEmpty()) {
+                    for (TypedMemoryCandidate candidate : typedCandidates) {
+                        memoryService.saveChatMemory(userId, candidate.getContent(), candidate.getMemoryType());
+                    }
+                    log.info("为用户 {} 保存 {} 条 AI 分类记忆", userId, typedCandidates.size());
+                }
+            } catch (Exception e) {
+                log.warn("记忆持久化异常，不影响对话结果: {}", e.getMessage());
+            }
+        }
+
+        AiConversation conversation = conversationMapper.selectById(conversationId);
+        conversation.setLastMessageAt(LocalDateTime.now());
+        conversationMapper.update(conversation);
+    }
+
+    private static class ChatContext {
+        final List<Map<String, String>> history;
+        final Map<String, Object> state;
+        final List<String> summaries;
+        final List<String> memoryTexts;
+
+        ChatContext(List<Map<String, String>> history, Map<String, Object> state,
+                    List<String> summaries, List<String> memoryTexts) {
+            this.history = history;
+            this.state = state;
+            this.summaries = summaries;
+            this.memoryTexts = memoryTexts;
+        }
     }
 }

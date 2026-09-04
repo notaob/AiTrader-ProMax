@@ -1,8 +1,7 @@
 import re
-from typing import List
 
 
-def chunk_document(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
+def chunk_document(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
     """
     文档切片。
 
@@ -44,7 +43,7 @@ def chunk_document(text: str, chunk_size: int = 500, overlap: int = 50) -> List[
     return chunks
 
 
-def extract_keywords(text: str) -> List[str]:
+def extract_keywords(text: str) -> list[str]:
     """
     提取关键词（简单实现）。
 

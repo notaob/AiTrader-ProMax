@@ -1,5 +1,7 @@
 from langchain_openai import ChatOpenAI
+
 from app.config import config
+
 
 def create_llm():
     """创建 LLM 实例（使用阿里云 DashScope）"""

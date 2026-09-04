@@ -1,0 +1,73 @@
+# 配置模板（可安全提交）：所有敏感值一律经环境变量注入，默认值仅为占位。
+# 使用：复制为 src/main/resources/application.yaml 并填写本机环境变量；
+# 或部署时直接注入下列环境变量（与 docker-compose / 云平台兼容）。
+server:
+  port: 8080
+spring:
+  threads:
+    virtual:
+      enabled: true
+  application:
+    name: campusMall
+  mvc:
+    async:
+      request-timeout: 120000
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:campusmall}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:123456}
+  sql:
+    init:
+      mode: never
+      schema-locations: classpath:schema.sql,classpath:schema-phase2.sql
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:123456}
+      database: ${REDIS_DB:0}
+      lettuce:
+        pool:
+          max-active: 10
+          max-idle: 10
+          min-idle: 1
+          time-between-eviction-runs: 10s
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.mp.aitrader.domain
+
+logging:
+  level:
+    com.mp.campusMall:
+      mapper: debug
+      service: info
+      controller: info
+
+jwt:
+  user-secret-key: ${JWT_SECRET:change-me-to-a-random-secret-of-at-least-32-chars}
+  user-ttl: 7200000
+  user-token-name: Authorization
+
+ai:
+  api-url: ${AI_API_URL:https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions}
+  api-key: ${AI_API_KEY:sk-your-dashscope-key}
+  model: ${AI_MODEL:qwen3-max}
+
+ai-agent:
+  url: http://${AI_AGENT_HOST:localhost}:${AI_AGENT_PORT:8000}
+
+proxy:
+  enable: ${PROXY_ENABLE:false}
+  host: ${PROXY_HOST:127.0.0.1}
+  port: ${PROXY_PORT:7890}
+
+resend:
+  api-key: ${RESEND_API_KEY:re_your-resend-key}
+  from-email: ${RESEND_FROM_EMAIL:noreply@example.com}
