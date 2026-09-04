@@ -20,7 +20,7 @@ import java.util.Map;
 @RequestMapping("/market/btc")
 public class CryptoProxyController {
 
-    private static final String BINANCE_API_URL = "https://api.binance.com/api/v3";
+    private static final String BINANCE_API_URL = "https://data-api.binance.vision/api/v3";
 
     @Value("${proxy.enable:false}")
     private boolean proxyEnable;

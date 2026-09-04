@@ -1,5 +1,5 @@
 // 基础请求封装
-const BASE_URL = '/api'; // 对应 vite.config.ts 中的 proxy
+export const API_BASE_URL = '/api'; // 对应 vite.config.ts 中的 proxy
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
@@ -15,7 +15,7 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
   const { params, headers, ...rest } = options;
   
   // 处理查询参数
-  let fullUrl = `${BASE_URL}${url}`;
+  let fullUrl = `${API_BASE_URL}${url}`;
   if (params) {
     const searchParams = new URLSearchParams(params);
     fullUrl += `?${searchParams.toString()}`;

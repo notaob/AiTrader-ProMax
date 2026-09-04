@@ -1,16 +1,108 @@
 import re
-import hashlib
-import math
-from typing import List, Dict, Optional
+
+from app.rag.embedding import embedding_service
+from app.rag.vector_store import Document, VectorStore
+
+# 用户长期记忆专用向量索引（与 RAG 知识库 rag_vectors 隔离；以 user_id 隔离租户）
+memory_vector_store = VectorStore(index_name="mem_vectors", doc_prefix="mem:doc")
 
 
-def classify_user_message(user_message: str) -> Optional[Dict]:
+def _strip_think_blocks(text: str) -> str:
+    """去除推理模型输出中的 <think>...</think> 思考块（deepseek/qwen 推理模式等），分类/摘要共用。"""
+    return re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
+
+
+def _parse_user_id(user_id) -> int:
+    """Java userId 为 Long；转 int 供向量库 user_id 数值过滤，非法时按 0（不过滤）处理。"""
+    try:
+        return int(user_id)
+    except (TypeError, ValueError):
+        return 0
+
+
+def recall_memories(user_id, query: str, top_k: int = 5, memory_type: str | None = None) -> list[dict]:
+    """语义召回用户记忆：embedding 查询后向量检索，支持 memory_type(preference/goal/constraint) 过滤。
+
+    返回 [{memory_id, content, memory_type, score(越小越相关), similarity}]；embedding 失败时返回空列表。
+    """
+    if not query:
+        return []
+    uid = _parse_user_id(user_id)
+    try:
+        query_vector = embedding_service.embed(query)
+    except Exception as e:  # embedding 不可用 → 本次不召回，不影响主链路
+        print(f"[memory] recall embed 失败: {e}")
+        return []
+    # type 过滤是后置条件：多取一些候选再过滤，避免漏召回
+    fetch_k = top_k * 4 if memory_type else top_k
+    results = memory_vector_store.similarity_search(query_vector, top_k=fetch_k, user_id=uid)
+    recalled = []
+    for r in results:
+        meta = r.document.metadata or {}
+        if memory_type and meta.get("memory_type") != memory_type:
+            continue
+        recalled.append({
+            "memory_id": meta.get("memory_id", r.document.id),
+            "content": r.document.content,
+            "memory_type": meta.get("memory_type", ""),
+            "score": round(float(r.score), 4),
+            "similarity": round(float(max(0.0, 1.0 - r.score)), 4),
+        })
+        if len(recalled) >= top_k:
+            break
+    return recalled
+
+
+def save_memories(items: list[dict]) -> int:
+    """把已由 Java 落库（MySQL ai_user_memories）的记忆文本 embed 后写入向量索引。
+
+    items 元素: {user_id, memory_id, content, memory_type}；
+    doc id 复用 MySQL 自增 memory_id（全局唯一），保证失效时能精确定位删除。
+    """
+    if not items:
+        return 0
+    try:
+        texts = [it["content"] for it in items]
+        vectors = embedding_service.embed_batch(texts)
+    except Exception as e:
+        print(f"[memory] save embed 失败: {e}")
+        return 0
+    docs = []
+    for item, vector in zip(items, vectors, strict=True):
+        uid = _parse_user_id(item.get("user_id"))
+        memory_id = int(item["memory_id"])
+        docs.append(Document(
+            id=str(memory_id),
+            content=item["content"],
+            source="memory",
+            vector=vector,
+            metadata={
+                "user_id": uid,
+                "memory_id": memory_id,
+                "memory_type": item.get("memory_type", "preference"),
+            },
+        ))
+    saved = memory_vector_store.add_documents(docs)
+    print(f"[memory] 写入 {saved} 条用户记忆向量 (user_id={items[0].get('user_id')})")
+    return saved
+
+
+def delete_memories(user_id, memory_ids: list | None = None, memory_type: str | None = None) -> int:
+    """删除记忆向量：优先按 memory_id 列表精确删除；否则按 user(+type) 清理（与 Java 失效逻辑对应）。"""
+    uid = _parse_user_id(user_id)
+    if memory_ids:
+        return memory_vector_store.delete_documents([str(i) for i in memory_ids])
+    return memory_vector_store.delete_by_user(uid, memory_type)
+
+
+def classify_user_message(user_message: str) -> dict | None:
     """
     用 AI 分类用户消息为: preference / goal / constraint / none
     返回 {"content": "提取的记忆文本", "type": "preference|goal|constraint"} 或 None
     """
-    from langchain_openai import ChatOpenAI
     from langchain_core.messages import HumanMessage as _HumanMessage
+    from langchain_openai import ChatOpenAI
+
     from app.config import config
 
     llm = ChatOpenAI(
@@ -38,7 +130,7 @@ def classify_user_message(user_message: str) -> Optional[Dict]:
         result = llm.invoke([_HumanMessage(content=prompt)])
         text = result.content.strip()
         # 去除推理模型的 <think>...</think> 标签（如 deepseek-v3/v4 等）
-        text = re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
+        text = _strip_think_blocks(text)
         # 提取 JSON（兼容 markdown code block）
         if "```" in text:
             text = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL).group(1)
@@ -58,7 +150,7 @@ def classify_user_message(user_message: str) -> Optional[Dict]:
         return None
 
 
-def extract_memory_from_dialogue(user_message: str, ai_response: str) -> List[Dict]:
+def extract_memory_from_dialogue(user_message: str, ai_response: str) -> list[dict]:
     """
     从对话中提取记忆候选。
 
@@ -106,76 +198,3 @@ def extract_memory_from_dialogue(user_message: str, ai_response: str) -> List[Di
         if key not in seen:
             seen[key] = cand
     return list(seen.values())
-
-
-def generate_embedding(text: str) -> List[float]:
-    """
-    生成文本向量（简单实现，用 hash 模拟）。
-
-    将文本分词后，基于哈希值生成固定维度的稀疏向量，
-    再归一化为单位向量，用于余弦相似度计算。
-    """
-    dim = 128
-    vec = [0.0] * dim
-
-    # 按字符滑动窗口生成 n-gram 特征
-    tokens = list(text)
-    for i in range(len(tokens)):
-        for n in range(1, 4):
-            if i + n > len(tokens):
-                break
-            gram = "".join(tokens[i:i + n])
-            h = int(hashlib.md5(gram.encode("utf-8")).hexdigest(), 16)
-            idx = h % dim
-            # 使用另一个哈希位作为符号，使分布更均匀
-            sign = 1 if ((h >> 7) & 1) == 0 else -1
-            vec[idx] += sign * (1.0 / (n * n))
-
-    # L2 归一化
-    norm = math.sqrt(sum(v * v for v in vec))
-    if norm > 0:
-        vec = [v / norm for v in vec]
-    return vec
-
-
-def search_memories(query: str, memories: List[str], top_k: int = 3) -> List[str]:
-    """
-    基于关键词召回记忆。
-
-    简单实现：将 query 分词后与每条 memory 计算关键词重叠度，
-    返回得分最高的 top_k 条记忆。
-    """
-    if not memories or not query:
-        return []
-
-    query_tokens = set(_tokenize(query))
-    if not query_tokens:
-        return memories[:top_k]
-
-    scored = []
-    for mem in memories:
-        mem_tokens = set(_tokenize(mem))
-        if not mem_tokens:
-            continue
-        # Jaccard 相似度作为得分
-        intersection = len(query_tokens & mem_tokens)
-        union = len(query_tokens | mem_tokens)
-        score = intersection / union if union > 0 else 0.0
-        scored.append((score, mem))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [mem for _, mem in scored[:top_k]]
-
-
-def _tokenize(text: str) -> List[str]:
-    """简单中文/英文分词：保留长度 >= 2 的词组。"""
-    text = re.sub(r"[^\u4e00-\u9fa5a-zA-Z0-9]", " ", text)
-    tokens = []
-    words = text.split()
-    for w in words:
-        if len(w) >= 2:
-            tokens.append(w.lower())
-        # 对纯中文进一步拆成单字，增强匹配
-        if re.match(r"^[\u4e00-\u9fa5]+$", w):
-            tokens.extend(list(w))
-    return tokens

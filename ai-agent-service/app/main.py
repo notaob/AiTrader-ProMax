@@ -1,16 +1,37 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
 import time
 
-from app.models import ChatRequest, ChatResponse, RAGRequest, RAGResponse, GraphExecuteRequest, SyncChunksRequest
-from app.graph.trading_graph import trading_graph
+import uvicorn
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+
 from app.config import config
-from app.rag.rag_service import rag_service
+from app.graph.trading_graph import trading_graph
+from app.memory.conversation_summarizer import summarize_conversation
+from app.memory.memory_service import (
+    classify_user_message,
+    delete_memories,
+    memory_vector_store,
+    recall_memories,
+    save_memories,
+)
+from app.models import (
+    ChatRequest,
+    ChatResponse,
+    GraphExecuteRequest,
+    MemoryDeleteRequest,
+    MemoryRecallRequest,
+    MemorySaveRequest,
+    RAGRequest,
+    RAGResponse,
+    SummarizeRequest,
+    SyncChunksRequest,
+)
+from app.observability.langfuse import make_run_config
 from app.rag.document_processor import document_processor
-from app.context.context_builder import build_prompt
-from app.memory.memory_service import extract_memory_from_dialogue, classify_user_message
-from langchain_core.messages import HumanMessage
+from app.rag.rag_service import rag_service
+from app.rag.vector_store import vector_store as rag_vector_store
+from app.streaming import build_chat_inputs, chat_stream_frames
 
 app = FastAPI(
     title="AI Agent Service (LangGraph)",
@@ -37,47 +58,14 @@ async def chat(request: ChatRequest):
     try:
         start_time = time.time()
 
-        # 使用 context_builder 组装完整 prompt
-        recent_messages = request.history or []
-        system_prompt = build_prompt(
-            state=request.state,
-            recent_messages=recent_messages,
-            summaries=request.summaries or [],
-            memories=request.memories or [],
-            knowledge_chunks=request.knowledge_chunks or [],
-            current_message=request.message,
-            mode=request.mode or "chat"
+        # LangGraph inputs 组装与 /agent/chat/stream 单一来源（见 app/streaming.py build_chat_inputs）
+        inputs = build_chat_inputs(request)
+        run_config = make_run_config(
+            session_id=request.session_id or "default",
+            user_id=request.user_id,
+            mode=request.mode or "chat",
         )
-
-        # 构建消息历史
-        messages = []
-
-        # 添加历史消息
-        for msg in request.history or []:
-            if msg.get("role") == "user":
-                messages.append(HumanMessage(content=msg["content"]))
-            elif msg.get("role") == "assistant":
-                from langchain_core.messages import AIMessage
-                messages.append(AIMessage(content=msg["content"]))
-
-        # 添加当前消息
-        messages.append(HumanMessage(content=request.message))
-
-        # 调用 LangGraph
-        result = await trading_graph.ainvoke({
-            "messages": messages,
-            "user_id": request.user_id,
-            "session_id": request.session_id or "default",
-            "intermediate_steps": [],
-            "mode": request.mode or "chat",
-            "context": {
-                "state": request.state,
-                "summaries": request.summaries,
-                "memories": request.memories,
-                "knowledge_chunks": request.knowledge_chunks,
-                "system_prompt": system_prompt
-            }
-        })
+        result = await trading_graph.ainvoke(inputs, config=run_config)
 
         execution_time = int((time.time() - start_time) * 1000)
 
@@ -107,7 +95,30 @@ async def chat(request: ChatRequest):
         import traceback
         error_msg = f"Error: {str(e)}\n{traceback.format_exc()}"
         print(error_msg)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/agent/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """ReAct 模式流式对话（SSE）。
+
+    帧协议见 app/streaming.py：data: {type: token|tool|done|error, ...}
+    非流式 /agent/chat 保留作 fallback（Java 断线/异常时降级）。
+    连接断开由 uvicorn 侧取消生成器，langgraph run 随之取消，不额外处理。
+    """
+    async def _event_source():
+        async for frame in chat_stream_frames(request):
+            yield frame
+
+    return StreamingResponse(
+        _event_source(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # 若置于 nginx 等代理后，关闭其响应缓冲以保真流式
+        },
+    )
 
 
 @app.post("/agent/rag", response_model=RAGResponse)
@@ -117,12 +128,12 @@ async def rag_chat(request: RAGRequest):
     """
     try:
         start_time = time.time()
-        
+
         # 调用 Python RAG 服务
         result = rag_service.query(request.question, request.top_k)
-        
+
         execution_time = int((time.time() - start_time) * 1000)
-        
+
         return RAGResponse(
             success=result["success"],
             answer=result["answer"],
@@ -131,7 +142,7 @@ async def rag_chat(request: RAGRequest):
             execution_time=execution_time
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/rag/add-text")
@@ -147,18 +158,18 @@ async def add_text_to_knowledge_base(text: str, source: str = "user"):
             "chunks": count
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/rag/upload")
-async def upload_file_to_knowledge_base(file: UploadFile = File(...)):
+async def upload_file_to_knowledge_base(file: UploadFile = File(...)):  # noqa: B008
     """
     上传文件到知识库（支持 txt, md）
     """
     try:
         content = await file.read()
         text = content.decode("utf-8")
-        
+
         count = document_processor.process_text(text, file.filename)
         return {
             "success": True,
@@ -166,7 +177,7 @@ async def upload_file_to_knowledge_base(file: UploadFile = File(...)):
             "chunks": count
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/rag/stats")
@@ -181,7 +192,7 @@ async def get_knowledge_base_stats():
             "document_count": stats["document_count"]
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.delete("/rag/clear")
@@ -196,7 +207,7 @@ async def clear_knowledge_base():
             "message": "知识库已清空" if success else "清空失败"
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/rag/sync")
@@ -205,14 +216,14 @@ async def sync_chunks_to_vector_store(request: SyncChunksRequest):
     Java 保存 chunks 到 MySQL 后，调此端点生成 embedding 并写入 Redis Stack 向量索引
     """
     try:
-        from app.rag.vector_store import vector_store, Document
         from app.rag.embedding import embedding_service
+        from app.rag.vector_store import Document, vector_store
 
         texts = [c["text"] for c in request.chunks]
         vectors = embedding_service.embed_batch(texts)
 
         documents = []
-        for chunk, vector in zip(request.chunks, vectors):
+        for chunk, vector in zip(request.chunks, vectors, strict=True):
             doc = Document(
                 id=str(chunk["mysql_chunk_id"]),
                 content=chunk["text"],
@@ -231,7 +242,7 @@ async def sync_chunks_to_vector_store(request: SyncChunksRequest):
     except Exception as e:
         import traceback
         print(f"[sync_chunks] error: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/agent/execute")
@@ -241,7 +252,12 @@ async def execute_graph(request: GraphExecuteRequest):
     """
     try:
         if request.graph_type == "trading":
-            result = await trading_graph.ainvoke(request.inputs)
+            run_config = make_run_config(
+                session_id=str(request.inputs.get("session_id", "default")),
+                user_id=str(request.inputs.get("user_id", "")),
+                mode=str(request.inputs.get("mode", "chat")),
+            )
+            result = await trading_graph.ainvoke(request.inputs, config=run_config)
             return {
                 "success": True,
                 "result": result
@@ -252,27 +268,92 @@ async def execute_graph(request: GraphExecuteRequest):
                 "error": f"未知的图类型: {request.graph_type}"
             }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/agent/memories/recall")
+async def memories_recall(request: MemoryRecallRequest):
+    """语义召回用户长期记忆：embedding 查询 → 向量检索（user_id 隔离 + 可选 type 过滤）。
+
+    供 Java AiMemoryServiceImpl.recallMemories() 调用；embedding 不可用时降级返回空列表。
+    """
+    try:
+        memories = recall_memories(request.user_id, request.query, request.top_k, request.type)
+        return {"success": True, "memories": memories, "count": len(memories)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/agent/memories/save")
+async def memories_save(request: MemorySaveRequest):
+    """写入用户记忆向量：Java 先把记忆落库到 MySQL(ai_user_memories)，再回调本端点生成 embedding。
+
+    返回 success=False（embedding 失败）不抛错，Java 侧按日志降级，不影响主链路。
+    """
+    try:
+        items = [m.model_dump() for m in request.memories]
+        saved = save_memories(items)
+        return {"success": saved == len(items), "saved": saved, "total": len(items)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/agent/memories/delete")
+async def memories_delete(request: MemoryDeleteRequest):
+    """删除记忆向量（记忆失效/清除时同步清理）。
+
+    优先级：memory_ids 精确删除 > memory_type 按类删除 > 整用户清空。
+    """
+    try:
+        deleted = delete_memories(request.user_id, request.memory_ids, request.memory_type)
+        return {"success": True, "deleted": deleted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/agent/summarize")
+async def summarize_messages(request: SummarizeRequest):
+    """LLM 语义摘要：把批量对话消息压成要点摘要（Java AiSummaryServiceImpl 触发时机不变，只换摘要文本来源）。"""
+    try:
+        if not request.messages:
+            raise HTTPException(status_code=400, detail="messages 不能为空")
+        summary = summarize_conversation(request.messages)
+        return {"success": True, "summary": summary, "message_count": len(request.messages)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/health")
 async def health_check():
-    """健康检查"""
+    """健康检查（含向量模式：auto 探测 RediSearch，缺失自动内存降级）"""
+    vector_modes = {}
+    for name, store in (("rag_vectors", rag_vector_store), ("mem_vectors", memory_vector_store)):
+        try:
+            vector_modes[name] = {
+                "mode": store.mode,
+                "forced": getattr(store, "forced", "auto"),
+                **store.get_stats(),
+            }
+        except Exception as e:
+            vector_modes[name] = {"mode": "unknown", "error": str(e)}
     return {
         "status": "healthy",
         "service": "ai-agent-langgraph",
         "version": "1.0.0",
-        "llm": config.DASHSCOPE_MODEL
+        "llm": config.DASHSCOPE_MODEL,
+        "vector_modes": vector_modes,
     }
 
 
 @app.get("/tools")
 async def list_tools():
     """列出可用工具"""
-    from app.tools.market_tools import market_tools
     from app.tools.analysis_tools import analysis_tools
+    from app.tools.market_tools import market_tools
     from app.tools.rag_tools import rag_tools
-    
+
     all_tools = market_tools + analysis_tools + rag_tools
     return {
         "tools": [

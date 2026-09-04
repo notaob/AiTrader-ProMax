@@ -1,0 +1,17 @@
+# ai-trader-mcp 镜像（MCP stdio server，复用 ai-agent-service 的共享工具实现 app/tools/core）
+# requirements.txt 由 `uv export --no-dev -o requirements.txt` 生成（与 uv.lock 一致）
+# 本地开发/验证请使用 uv: `uv sync` + `uv run pytest -m mcp`
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# 安装依赖（锁定版本，含 mcp SDK）
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 复制共享代码（tools/core、market_data、rag 等）
+COPY app/ ./app/
+
+# stdio MCP server：MCP 客户端（Claude Desktop / Cursor / Inspector / npx mcp-remote 等）
+# 以 `docker run -i --rm ai-trader-mcp` 方式 spawn，经 stdin/stdout 走 MCP 协议。
+CMD ["python", "-m", "app.mcp_tool_server"]

@@ -42,4 +42,7 @@ public interface AiMessageMapper {
 
     @Select("SELECT MAX(message_index) FROM ai_messages WHERE conversation_id = #{conversationId}")
     Integer selectMaxMessageIndex(Long conversationId);
+
+    @Delete("DELETE FROM ai_messages WHERE id = #{id}")
+    void deleteById(@Param("id") Long id);
 }

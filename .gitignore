@@ -155,3 +155,26 @@ docker-compose.yml
 *.njsproj
 *.sln
 *.sw?
+
+# ==================== Local machine / Deploy artifacts ====================
+# 本机/IDE 数据与部署残留（不入库）
+.codebuddy/
+local.properties
+.mcp.json
+
+# Java 配置模板为 application-example.yaml（可提交），真实配置一律忽略
+application.yml
+application-*.yml
+
+# AI Agent 评测生成物（golden 数据在 evals/data/ 保留入库）
+ai-agent-service/evals/reports/
+
+# Python venv 通用化
+.venv/
+**/.venv/
+
+# 部署脚本 / 打包产物（可能含服务器信息，勿入库）
+deploy.tar.gz
+deploy_log.txt
+rebuild*.txt
+check_images.py
