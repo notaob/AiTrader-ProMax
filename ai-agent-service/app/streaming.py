@@ -17,6 +17,7 @@
 - 错误在流内以 error 帧返回（SSE 流已建立，不能用 HTTP 错误码）；连接断开由
   CancelledError 自然传播，不吞。
 """
+import asyncio
 import json
 import time
 
@@ -148,9 +149,10 @@ async def chat_stream_frames(request: ChatRequest):
         answer = extract_chunk_text(last_llm_message) or "".join(token_texts)
 
         # 记忆分类与 /agent/chat 保持一致：strategy 模式跳过
+        # 同步 LLM 调用扔进线程池：在 async 生成器里直接调用会阻塞整个事件循环
         memory_candidates_typed: list[dict] = []
         if (request.mode or "chat") != "strategy":
-            classified = classify_user_message(request.message)
+            classified = await asyncio.to_thread(classify_user_message, request.message)
             if classified:
                 memory_candidates_typed.append(classified)
 

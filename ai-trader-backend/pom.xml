@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.mp</groupId>
-    <artifactId>campusMall</artifactId>
+    <artifactId>ai-trader-backend</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>campusMall</name>
-    <description>campusMall</description>
+    <name>ai-trader-backend</name>
+    <description>AiTrader 后端服务</description>
     <url/>
     <licenses>
         <license/>
@@ -33,6 +33,15 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+        <!-- 业务指标（LLM 限流/队列积压/死信）+ Prometheus 暴露 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

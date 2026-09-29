@@ -5,6 +5,7 @@ import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.mp.aitrader.agent.dto.ChatResponse;
+import com.mp.aitrader.trace.TraceSupport;
 import com.mp.aitrader.agent.dto.LangGraphChatResult;
 import com.mp.aitrader.agent.dto.ReActResponse;
 import com.mp.aitrader.agent.dto.TypedMemoryCandidate;
@@ -33,6 +34,22 @@ public class LangGraphClient {
     private String agentServiceUrl;
 
     /**
+     * 流式 SSE 的读超时：与 Controller 的 {@code SseEmitter} 超时、
+     * {@code spring.mvc.async.request-timeout} 三处保持一致（120s）。
+     * 原值 300s —— 一个卡死的请求会占住一个工作线程 5 分钟。
+     */
+    private static final int STREAM_READ_TIMEOUT_MS = 120_000;
+
+    /**
+     * 透传 traceId 给 Python 侧：把 Java 日志与 Agent 日志串成一条链路。
+     * 无 traceId 时返回空串（例如定时任务、无请求上下文的调用）。
+     */
+    private static String traceHeader() {
+        String traceId = TraceSupport.currentTraceId();
+        return traceId == null ? "" : traceId;
+    }
+
+    /**
      * ReAct 模式对话
      */
     public ReActResponse chatWithReAct(String message, String userId, String sessionId, List<Map<String, String>> history) {
@@ -45,6 +62,7 @@ public class LangGraphClient {
 
             HttpResponse response = HttpRequest.post(agentServiceUrl + "/agent/chat")
                     .header("Content-Type", "application/json")
+                .header(TraceSupport.HEADER, traceHeader())
                     .body(JSONUtil.toJsonStr(requestBody))
                     .timeout(120000)
                     .execute();
@@ -87,6 +105,7 @@ public class LangGraphClient {
 
             HttpResponse response = HttpRequest.post(agentServiceUrl + "/agent/rag")
                     .header("Content-Type", "application/json")
+                .header(TraceSupport.HEADER, traceHeader())
                     .body(JSONUtil.toJsonStr(requestBody))
                     .timeout(30000)
                     .execute();
@@ -130,6 +149,7 @@ public class LangGraphClient {
 
             HttpResponse response = HttpRequest.post(agentServiceUrl + "/agent/chat")
                     .header("Content-Type", "application/json")
+                .header(TraceSupport.HEADER, traceHeader())
                     .body(JSONUtil.toJsonStr(requestBody))
                     .timeout(120000)
                     .execute();
@@ -182,6 +202,7 @@ public class LangGraphClient {
 
             HttpResponse response = HttpRequest.post(agentServiceUrl + "/agent/chat")
                     .header("Content-Type", "application/json")
+                .header(TraceSupport.HEADER, traceHeader())
                     .body(JSONUtil.toJsonStr(requestBody))
                     .timeout(120000)
                     .execute();
@@ -256,6 +277,7 @@ public class LangGraphClient {
 
             HttpResponse response = HttpRequest.post(agentServiceUrl + "/rag/sync")
                     .header("Content-Type", "application/json")
+                .header(TraceSupport.HEADER, traceHeader())
                     .body(JSONUtil.toJsonStr(requestBody))
                     .timeout(30000)
                     .execute();
@@ -287,6 +309,7 @@ public class LangGraphClient {
 
             HttpResponse response = HttpRequest.post(agentServiceUrl + "/agent/memories/recall")
                     .header("Content-Type", "application/json")
+                .header(TraceSupport.HEADER, traceHeader())
                     .body(JSONUtil.toJsonStr(requestBody))
                     .timeout(30000)
                     .execute();
@@ -329,6 +352,7 @@ public class LangGraphClient {
 
             HttpResponse response = HttpRequest.post(agentServiceUrl + "/agent/memories/save")
                     .header("Content-Type", "application/json")
+                .header(TraceSupport.HEADER, traceHeader())
                     .body(JSONUtil.toJsonStr(requestBody))
                     .timeout(30000)
                     .execute();
@@ -363,6 +387,7 @@ public class LangGraphClient {
 
             HttpResponse response = HttpRequest.post(agentServiceUrl + "/agent/memories/delete")
                     .header("Content-Type", "application/json")
+                .header(TraceSupport.HEADER, traceHeader())
                     .body(JSONUtil.toJsonStr(requestBody))
                     .timeout(30000)
                     .execute();
@@ -395,6 +420,7 @@ public class LangGraphClient {
 
             HttpResponse response = HttpRequest.post(agentServiceUrl + "/agent/summarize")
                     .header("Content-Type", "application/json")
+                .header(TraceSupport.HEADER, traceHeader())
                     .body(JSONUtil.toJsonStr(requestBody))
                     .timeout(60000)
                     .execute();
@@ -445,8 +471,9 @@ public class LangGraphClient {
 
         HttpResponse response = HttpRequest.post(agentServiceUrl + "/agent/chat/stream")
                 .header("Content-Type", "application/json")
+                .header(TraceSupport.HEADER, traceHeader())
                 .body(JSONUtil.toJsonStr(requestBody))
-                .timeout(300000)  // 连接 + 读超时：SSE 可能长时间无帧（思考 / 工具执行）
+                .timeout(STREAM_READ_TIMEOUT_MS)  // 连接 + 读超时：SSE 可能长时间无帧（思考 / 工具执行）
                 .execute();
 
         if (response.getStatus() != 200) {

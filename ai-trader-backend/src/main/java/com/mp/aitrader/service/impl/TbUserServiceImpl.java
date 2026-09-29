@@ -63,7 +63,7 @@ public class TbUserServiceImpl extends ServiceImpl<TbUserMapper, TbUser> impleme
         // 2.生成验证码
         String code = RandomUtil.randomNumbers(6);
         // 3.保存验证码到Redis
-        redisTemplate.opsForValue().set(LOGIN_CODE_KEY + email, code, CACHE_NULL_TTL, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(LOGIN_CODE_KEY + email, code, LOGIN_CODE_TTL, TimeUnit.MINUTES);
         // 4.通过 Resend 发送验证码邮件
         emailService.sendVerificationCode(email, code);
         return Result.success("验证码已发送到邮箱");

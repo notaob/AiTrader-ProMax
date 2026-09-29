@@ -8,7 +8,7 @@ spring:
     virtual:
       enabled: true
   application:
-    name: campusMall
+    name: ai-trader-backend
   mvc:
     async:
       request-timeout: 120000
@@ -38,14 +38,23 @@ spring:
       enabled: true
       max-file-size: 10MB
       max-request-size: 10MB
+  # 仅在 ai.task.mq.enabled=true 时生效
+  rabbitmq:
+    host: ${RABBIT_HOST:127.0.0.1}
+    port: ${RABBIT_PORT:5672}
+    username: ${RABBIT_USER:guest}
+    password: ${RABBIT_PWD:guest}
 
 mybatis-plus:
   mapper-locations: classpath:mapper/*.xml
   type-aliases-package: com.mp.aitrader.domain
 
 logging:
+  # 把 MDC 里的 traceId 打进每条日志（见 trace/TraceIdFilter）
+  pattern:
+    level: "%5p [trace=%X{traceId:-}]"
   level:
-    com.mp.campusMall:
+    com.mp.aitrader:
       mapper: debug
       service: info
       controller: info
@@ -59,12 +68,31 @@ ai:
   api-url: ${AI_API_URL:https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions}
   api-key: ${AI_API_KEY:sk-your-dashscope-key}
   model: ${AI_MODEL:qwen3-max}
+  chat:
+    # 同时进行的 AI 对话上限，超过即快速失败（返回 error 帧），避免拖垮线程池与 LLM 配额
+    max-concurrent: ${AI_CHAT_MAX_CONCURRENT:10}
+  task:
+    mq:
+      # 后台任务（摘要/记忆/向量同步）是否走 RabbitMQ。
+      # false（默认）：本地执行，行为与未引入 MQ 时一致，不依赖 broker。
+      # true：走队列，获得持久化 / 重试 / 死信可重放；broker 不可用时自动降级本地执行。
+      enabled: ${AI_TASK_MQ_ENABLED:false}
 
 ai-agent:
   url: http://${AI_AGENT_HOST:localhost}:${AI_AGENT_PORT:8000}
 
 proxy:
   enable: ${PROXY_ENABLE:false}
+
+# 业务指标暴露：/actuator/metrics/*（JSON）与 /actuator/prometheus（抓取端点）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
   host: ${PROXY_HOST:127.0.0.1}
   port: ${PROXY_PORT:7890}
 

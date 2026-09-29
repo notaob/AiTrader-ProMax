@@ -40,6 +40,8 @@ public class JwtInterceptor implements HandlerInterceptor {
             String uri = request.getRequestURI();
             if (uri.contains("/moments/list") ||
                 (uri.matches(".*/moments/\\d+/comments") && "GET".equalsIgnoreCase(request.getMethod()))) {
+                // 匿名可访问：必须显式清空。Servlet 线程由线程池复用，若不清理会读到上一位用户残留的 ThreadLocal。
+                BaseContext.removeCurrentId();
                 return true;
             }
             // 其他接口必须登录

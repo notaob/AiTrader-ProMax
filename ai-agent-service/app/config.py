@@ -19,6 +19,12 @@ class AppSettings(BaseSettings):
     DASHSCOPE_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     DASHSCOPE_MODEL: str = "qwen3.8-flash"
 
+    # --- 火山方舟（可选：仅覆盖 chat 模型，embedding 仍走 DashScope）---
+    # 配置了 ARK_API_KEY 即启用；用于主供应商欠费/限流时一键切换
+    ARK_API_KEY: str = ""
+    ARK_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
+    ARK_MODEL: str = ""
+
     # --- Redis (与 Java 后端共享) ---
     REDIS_HOST: str = "127.0.0.1"
     REDIS_PORT: int = 6379

@@ -10,9 +10,6 @@ import com.mp.aitrader.service.TbAiService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Date;
 
 /**
  * AI 服务实现
@@ -28,8 +25,13 @@ public class TbAiServiceImpl implements TbAiService {
     @Autowired
     private LangGraphClient langGraphClient;
 
+    /**
+     * 注意：本方法不加 {@code @Transactional}。
+     * 早期实现把 120s 的 LLM 远程调用包在事务里，事务期间一直占用数据库连接，
+     * 默认连接池仅 10，少量并发即可耗尽连接、拖垮全部接口。
+     * 现在的写法：查询与扣减均为单条 SQL（扣减本身原子），远程调用全程无事务。
+     */
     @Override
-    @Transactional
     public Result<AIChatVO> chat() {
         Long userId = BaseContext.getCurrentId();
 
@@ -45,14 +47,12 @@ public class TbAiServiceImpl implements TbAiService {
             return Result.success(AIChatVO.builder().reply("AI交易机会不足，请先获取机会").build());
         }
 
-        // 3. 调用 Agent 生成策略报告
+        // 3. 调用 Agent 生成策略报告（事务外：单次最长 120s，绝不占用数据库连接）
         String reply = callAgent(user);
 
-        // 4. 只有 Agent 调用成功才扣除机会
+        // 4. 只有 Agent 调用成功才扣除机会：原子扣减，并发安全
         if (!reply.startsWith("AI 服务暂时繁忙") && !reply.startsWith("AI 服务响应异常") && !reply.startsWith("AI 分析服务连接失败")) {
-            user.setAiChance(aiChance - 1);
-            user.setUpdateTime(new Date());
-            userMapper.updateById(user);
+            userMapper.deductAiChance(userId);
         }
 
         return Result.success(AIChatVO.builder()

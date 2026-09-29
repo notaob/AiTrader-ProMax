@@ -1,3 +1,6 @@
+import asyncio
+import json
+import os
 import time
 
 import uvicorn
@@ -48,6 +51,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- LLM 并发闸门 ----------------------------------------------------------
+# Java 侧的 Semaphore 拦的是"用户请求"，这里拦的是真正打到 LLM 的出口。
+# 注意换算：单次 /agent/chat 内部是 ReAct 循环，会产生 3~8 次 LLM 调用，
+# 所以本值应按 DashScope 的 QPS 配额折算（配额 ÷ 单请求平均调用数），而不是按"同时几个用户"。
+_LLM_GATE = asyncio.Semaphore(int(os.getenv("LLM_MAX_CONCURRENCY", "4")))
+_LLM_GATE_WAIT_SEC = float(os.getenv("LLM_GATE_WAIT_SEC", "5"))
+
+
+async def _acquire_llm_gate() -> None:
+    """获取 LLM 并发许可；等待超时则 429 快速失败，避免用户盯着空白页面干等。"""
+    try:
+        await asyncio.wait_for(_LLM_GATE.acquire(), timeout=_LLM_GATE_WAIT_SEC)
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=429, detail="AI 服务繁忙，请稍后重试") from exc
+
+
+def _error_frame(message: str) -> str:
+    """SSE error 帧（与 app/streaming.py 的帧协议一致）。"""
+    return "data: " + json.dumps({"type": "error", "message": message}, ensure_ascii=False) + "\n\n"
+
 
 @app.post("/agent/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -55,6 +78,7 @@ async def chat(request: ChatRequest):
     ReAct 模式对话 - 使用 LangGraph 实现
     支持 state、summaries、memories 和 knowledge_chunks 上下文管理
     """
+    await _acquire_llm_gate()
     try:
         start_time = time.time()
 
@@ -78,7 +102,9 @@ async def chat(request: ChatRequest):
         memory_candidates_typed = []
 
         if (request.mode or "chat") != "strategy":
-            classified = classify_user_message(request.message)
+            # 同步 LLM 调用必须扔进线程池：直接在 async 端点里跑会阻塞整个事件循环，
+            # 期间所有请求（包括其他用户的对话）都无法推进
+            classified = await asyncio.to_thread(classify_user_message, request.message)
             if classified:
                 memory_candidate_texts.append(classified["content"])
                 memory_candidates_typed.append(classified)
@@ -96,6 +122,8 @@ async def chat(request: ChatRequest):
         error_msg = f"Error: {str(e)}\n{traceback.format_exc()}"
         print(error_msg)
         raise HTTPException(status_code=500, detail=str(e)) from e
+    finally:
+        _LLM_GATE.release()
 
 
 @app.post("/agent/chat/stream")
@@ -107,8 +135,18 @@ async def chat_stream(request: ChatRequest):
     连接断开由 uvicorn 侧取消生成器，langgraph run 随之取消，不额外处理。
     """
     async def _event_source():
-        async for frame in chat_stream_frames(request):
-            yield frame
+        # 流已建立后无法再改 HTTP 状态码，因此超时走 error 帧而不是抛异常
+        try:
+            await asyncio.wait_for(_LLM_GATE.acquire(), timeout=_LLM_GATE_WAIT_SEC)
+        except asyncio.TimeoutError:
+            yield _error_frame("AI 服务繁忙，请稍后重试")
+            return
+        try:
+            async for frame in chat_stream_frames(request):
+                yield frame
+        finally:
+            # 流式请求持有许可的时长 = 整个流的生命周期，必须在生成器结束时释放
+            _LLM_GATE.release()
 
     return StreamingResponse(
         _event_source(),
@@ -313,16 +351,24 @@ async def memories_delete(request: MemoryDeleteRequest):
 
 @app.post("/agent/summarize")
 async def summarize_messages(request: SummarizeRequest):
-    """LLM 语义摘要：把批量对话消息压成要点摘要（Java AiSummaryServiceImpl 触发时机不变，只换摘要文本来源）。"""
+    """LLM 语义摘要：把批量对话消息压成要点摘要（Java AiSummaryServiceImpl 触发时机不变，只换摘要文本来源）。
+
+    摘要与对话共用同一把 LLM 闸门（_LLM_GATE）：T5 异步化后摘要调用量大且单次耗时长，
+    若绕过闸门，既会挤占 DashScope 配额毒化主链路，也会绕过全局限流保护。
+    """
+    if not request.messages:
+        raise HTTPException(status_code=400, detail="messages 不能为空")
+    await _acquire_llm_gate()
     try:
-        if not request.messages:
-            raise HTTPException(status_code=400, detail="messages 不能为空")
-        summary = summarize_conversation(request.messages)
+        # 同步 LLM 调用扔进线程池，避免阻塞事件循环（见 /agent/chat 内 classify 的说明）
+        summary = await asyncio.to_thread(summarize_conversation, request.messages)
         return {"success": True, "summary": summary, "message_count": len(request.messages)}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+    finally:
+        _LLM_GATE.release()
 
 
 @app.get("/health")
