@@ -83,6 +83,8 @@ ai-agent:
 
 proxy:
   enable: ${PROXY_ENABLE:false}
+  host: ${PROXY_HOST:127.0.0.1}
+  port: ${PROXY_PORT:7890}
 
 # 业务指标暴露：/actuator/metrics/*（JSON）与 /actuator/prometheus（抓取端点）
 management:
@@ -93,8 +95,6 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
-  host: ${PROXY_HOST:127.0.0.1}
-  port: ${PROXY_PORT:7890}
 
 resend:
   api-key: ${RESEND_API_KEY:re_your-resend-key}
