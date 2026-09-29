@@ -183,3 +183,8 @@ check_images.py
 INTERVIEW_STAR_SCRIPTS.md
 PROJECT_EXPERIENCE_STAR.md
 erl_crash.dump
+
+# 只保留 README，其余 md 一律不入库
+*.md
+!README.md
+!**/README.md
