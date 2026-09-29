@@ -63,7 +63,7 @@ async def _acquire_llm_gate() -> None:
     """获取 LLM 并发许可；等待超时则 429 快速失败，避免用户盯着空白页面干等。"""
     try:
         await asyncio.wait_for(_LLM_GATE.acquire(), timeout=_LLM_GATE_WAIT_SEC)
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         raise HTTPException(status_code=429, detail="AI 服务繁忙，请稍后重试") from exc
 
 
@@ -138,7 +138,7 @@ async def chat_stream(request: ChatRequest):
         # 流已建立后无法再改 HTTP 状态码，因此超时走 error 帧而不是抛异常
         try:
             await asyncio.wait_for(_LLM_GATE.acquire(), timeout=_LLM_GATE_WAIT_SEC)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             yield _error_frame("AI 服务繁忙，请稍后重试")
             return
         try:

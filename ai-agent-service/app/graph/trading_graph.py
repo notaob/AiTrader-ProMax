@@ -12,9 +12,10 @@ from app.prompts import STRATEGY_PROMPT, SYSTEM_PROMPT
 from app.tools.analysis_tools import analysis_tools
 from app.tools.market_tools import market_tools
 from app.tools.rag_tools import rag_tools
+from app.tools.sandbox_tools import sandbox_tools
 
 # 合并所有工具
-all_tools = market_tools + analysis_tools + rag_tools
+all_tools = market_tools + analysis_tools + rag_tools + sandbox_tools
 tool_map = {t.name: t for t in all_tools}
 
 
@@ -28,6 +29,7 @@ class TradingState(TypedDict, total=False):
     - user_id/session_id:  会话归属
     - mode:                "chat" | "strategy"
     - context:             state / summaries / memories / knowledge_chunks / system_prompt
+    - sandbox_attempts:    沙箱工具本轮执行次数（自纠错循环上限保护）
     """
 
     messages: Annotated[Sequence[BaseMessage], operator.add]
@@ -38,6 +40,7 @@ class TradingState(TypedDict, total=False):
     intermediate_steps: list[dict[str, Any]]
     mode: str
     context: dict[str, Any]
+    sandbox_attempts: int
 
 
 # LLM 绑定工具
@@ -111,6 +114,7 @@ async def tools_node(state: TradingState):
 
     tool_results = []
     steps = list(state.get("intermediate_steps") or [])
+    sandbox_used = False
 
     for tool_call in last_message.tool_calls:
         tool_name = tool_call.get("name", "")
@@ -123,6 +127,11 @@ async def tools_node(state: TradingState):
                 tool_args["user_id"] = int(state.get("user_id", "0"))
             except (ValueError, TypeError):
                 tool_args["user_id"] = 0
+
+        # 沙箱工具：注入尝试次数（自纠错循环上限保护），不暴露给 LLM schema
+        if tool_name == "run_backtest_code" and "attempts_used" not in tool_args:
+            tool_args["attempts_used"] = int(state.get("sandbox_attempts") or 0)
+            sandbox_used = True
 
         steps = _record_step(steps, type="action", tool=tool_name, input=tool_args)
 
@@ -139,7 +148,10 @@ async def tools_node(state: TradingState):
                 tool_results.append(ToolMessage(content=f"工具执行错误: {str(e)}", tool_call_id=tool_id))
                 steps = _record_step(steps, type="observation", tool=tool_name, output=f"工具执行错误: {str(e)[:200]}")
 
-    return {"messages": tool_results, "intermediate_steps": steps}
+    update = {"messages": tool_results, "intermediate_steps": steps}
+    if sandbox_used:
+        update["sandbox_attempts"] = int(state.get("sandbox_attempts") or 0) + 1
+    return update
 
 
 def create_trading_graph():

