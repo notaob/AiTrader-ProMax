@@ -6,6 +6,8 @@ import com.mp.aitrader.knowledge.mapper.AiKnowledgeChunkMapper;
 import com.mp.aitrader.knowledge.mapper.AiKnowledgeDocMapper;
 import com.mp.aitrader.knowledge.service.AiKnowledgeService;
 import com.mp.aitrader.agent.client.LangGraphClient;
+import com.mp.aitrader.task.AiTaskPayloads;
+import com.mp.aitrader.task.AiTaskRabbitConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,9 @@ public class AiKnowledgeServiceImpl implements AiKnowledgeService {
 
     @Autowired
     private LangGraphClient langGraphClient;
+
+    @Autowired
+    private com.mp.aitrader.task.AiTaskPublisher taskPublisher;
 
     @Override
     @Transactional
@@ -62,12 +67,20 @@ public class AiKnowledgeServiceImpl implements AiKnowledgeService {
             chunkData.add(item);
         }
 
-        // 调 Python /rag/sync 生成 embedding 并写入向量索引（容错：失败不影响 MySQL）
-        try {
-            langGraphClient.syncChunksToVectorStore(chunkData, doc.getUserId());
-        } catch (Exception e) {
-            log.warn("同步向量索引失败，不影响 MySQL 存储: {}", e.getMessage());
-        }
+        // 调 Python /rag/sync 生成 embedding 并写入向量索引（容错：失败不影响 MySQL）。
+        // 注意本方法带 @Transactional —— 投递器会把真实发送推迟到 afterCommit，
+        // 否则消费者可能早于事务提交就读到还没落库的 chunk。
+        AiTaskPayloads.RagSyncTask syncTask = AiTaskPayloads.RagSyncTask.builder()
+                .userId(doc.getUserId())
+                .chunks(chunkData)
+                .build();
+        taskPublisher.submit(AiTaskRabbitConfig.RK_RAG_SYNC, syncTask, () -> {
+            try {
+                langGraphClient.syncChunksToVectorStore(chunkData, doc.getUserId());
+            } catch (Exception e) {
+                log.warn("同步向量索引失败，不影响 MySQL 存储: {}", e.getMessage());
+            }
+        });
 
         log.info("上传知识文档 {}，分片数: {}，已同步向量索引", doc.getTitle(), chunks.size());
     }

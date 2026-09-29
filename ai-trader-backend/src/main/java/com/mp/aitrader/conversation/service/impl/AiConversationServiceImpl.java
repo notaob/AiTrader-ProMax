@@ -13,6 +13,8 @@ import com.mp.aitrader.domain.TbUser;
 import com.mp.aitrader.mapper.TbUserMapper;
 import com.mp.aitrader.memory.domain.AiUserMemory;
 import com.mp.aitrader.memory.service.AiMemoryService;
+import com.mp.aitrader.task.AiAsyncTaskService;
+import com.mp.aitrader.task.AiTaskPayloads;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
@@ -22,7 +24,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.Date;
@@ -60,7 +64,28 @@ public class AiConversationServiceImpl implements AiConversationService {
     @Autowired
     private AiMemoryService memoryService;
 
+    @Autowired
+    private AiAsyncTaskService asyncTasks;
+
+    @Autowired
+    private com.mp.aitrader.conversation.cache.AiConversationCache conversationCache;
+
+    @Autowired
+    private com.mp.aitrader.metric.AiMetrics aiMetrics;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * 编程式事务：把事务边界精确收在"纯数据库写"上，确保远程 IO（LLM / embedding）不占用数据库连接。
+     *
+     * <p>不用 {@code @Transactional} 的原因是：本类内部自调用会绕过 Spring 代理，事务不生效；
+     * TransactionTemplate 显式声明边界，语义更清晰，也便于在流式与同步两条路径上复用。
+     */
+    private final TransactionTemplate txTemplate;
+
+    public AiConversationServiceImpl(PlatformTransactionManager transactionManager) {
+        this.txTemplate = new TransactionTemplate(transactionManager);
+    }
 
     @Override
     @Transactional
@@ -76,15 +101,25 @@ public class AiConversationServiceImpl implements AiConversationService {
 
         sessionStateService.initSessionState(conversation.getId());
 
+        // 新增会话必须立即可见 → 结构变更后删除缓存（先更库、再删缓存；删失败由 TTL 兜底）
+        conversationCache.evict(userId);
+
         return mapToResponse(conversation);
     }
 
+    /** Cache-Aside：命中直接返回，未命中回源查库并回写缓存（含空列表，防穿透）。 */
     @Override
     public List<ConversationResponse> getUserConversations(Long userId) {
+        List<ConversationResponse> cached = conversationCache.get(userId);
+        if (cached != null) {
+            return cached;
+        }
         List<AiConversation> conversations = conversationMapper.selectByUserId(userId);
-        return conversations.stream()
+        List<ConversationResponse> responses = conversations.stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
+        conversationCache.put(userId, responses);
+        return responses;
     }
 
     @Override
@@ -95,8 +130,14 @@ public class AiConversationServiceImpl implements AiConversationService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * 同步对话入口。注意：本方法不加 {@code @Transactional}。
+     *
+     * <p>早期实现把整条链路包在事务里，而其中的 LLM 调用最长 120s —— 事务期间持续占用数据库连接，
+     * 默认连接池仅 10，少量并发即可耗尽连接、拖垮全部接口。
+     * 现在事务边界由 txTemplate 精确控制在"纯数据库写"上，远程调用全程无事务。
+     */
     @Override
-    @Transactional
     public ChatResponse chat(Long conversationId, Long userId, ChatMessageRequest request) {
         String userMessage = request.getMessage();
         String mode = request.getMode();
@@ -123,15 +164,14 @@ public class AiConversationServiceImpl implements AiConversationService {
                             .build();
                 }
                 Integer aiChance = user.getAiChance() == null ? 0 : user.getAiChance();
-                if (aiChance <= 0) {
+                // 原子扣减：一条 UPDATE ... WHERE ai_chance > 0，以影响行数判定成败。
+                // 原「读-改-写」在并发下两个请求可同时读到 1 并双双通过校验，造成超扣。
+                if (userMapper.deductAiChance(userId) == 0) {
                     return ChatResponse.builder()
                             .reply("AI交易机会不足，请先获取机会")
                             .conversationId(conversationId)
                             .build();
                 }
-                user.setAiChance(aiChance - 1);
-                user.setUpdateTime(new Date());
-                userMapper.updateById(user);
                 remainingChance = aiChance - 1;
             }
         }
@@ -181,31 +221,36 @@ public class AiConversationServiceImpl implements AiConversationService {
             // 重新检查缺失类别（因为刚刚可能保存了新记忆）
             missingCategories = memoryService.getMissingProfileCategories(userId);
             if (missingCategories.isEmpty()) {
-                // 画像完整，清除 pending 状态
-                if (sessionState != null) {
-                    try {
-                        stateMap.remove("pending_profile_category");
-                        sessionState.setStateJson(objectMapper.writeValueAsString(stateMap));
-                        sessionStateMapper.update(sessionState);
-                    } catch (Exception e) {
-                        log.warn("更新 stateJson 失败: {}", e.getMessage());
-                    }
-                }
-
                 String doneMsg = "太好了！你的交易画像已经完整，现在可以重新点击「获取策略报告」来生成个性化报告了。";
-                Integer doneMaxIndex = messageMapper.selectMaxMessageIndex(conversationId);
-                int doneAssistantIndex = (doneMaxIndex != null ? doneMaxIndex : 0) + 1;
+                final AiSessionState doneSessionState = sessionState;
+                final Map<String, Object> doneStateMap = stateMap;
 
-                AiMessage doneAssistantMsg = new AiMessage();
-                doneAssistantMsg.setConversationId(conversationId);
-                doneAssistantMsg.setRole("assistant");
-                doneAssistantMsg.setContent(doneMsg);
-                doneAssistantMsg.setMessageIndex(doneAssistantIndex);
-                messageMapper.insert(doneAssistantMsg);
+                // 事务只覆盖数据库写：清除 pending 状态 + assistant 消息落库 + 会话时间戳
+                txTemplate.executeWithoutResult(status -> {
+                    if (doneSessionState != null) {
+                        try {
+                            doneStateMap.remove("pending_profile_category");
+                            doneSessionState.setStateJson(objectMapper.writeValueAsString(doneStateMap));
+                            sessionStateMapper.update(doneSessionState);
+                        } catch (Exception e) {
+                            log.warn("更新 stateJson 失败: {}", e.getMessage());
+                        }
+                    }
 
-                AiConversation doneConversation = conversationMapper.selectById(conversationId);
-                doneConversation.setLastMessageAt(LocalDateTime.now());
-                conversationMapper.update(doneConversation);
+                    Integer doneMaxIndex = messageMapper.selectMaxMessageIndex(conversationId);
+                    int doneAssistantIndex = (doneMaxIndex != null ? doneMaxIndex : 0) + 1;
+
+                    AiMessage doneAssistantMsg = new AiMessage();
+                    doneAssistantMsg.setConversationId(conversationId);
+                    doneAssistantMsg.setRole("assistant");
+                    doneAssistantMsg.setContent(doneMsg);
+                    doneAssistantMsg.setMessageIndex(doneAssistantIndex);
+                    messageMapper.insert(doneAssistantMsg);
+
+                    AiConversation doneConversation = conversationMapper.selectById(conversationId);
+                    doneConversation.setLastMessageAt(LocalDateTime.now());
+                    conversationMapper.update(doneConversation);
+                });
 
                 return ChatResponse.builder()
                         .reply(doneMsg)
@@ -253,30 +298,37 @@ public class AiConversationServiceImpl implements AiConversationService {
                     options = List.of();
             }
 
-            // 保存引导问题为 assistant 消息
-            Integer newMaxIndex = messageMapper.selectMaxMessageIndex(conversationId);
-            int assistantIndex = (newMaxIndex != null ? newMaxIndex : 0) + 1;
-            AiMessage assistantMsg = new AiMessage();
-            assistantMsg.setConversationId(conversationId);
-            assistantMsg.setRole("assistant");
-            assistantMsg.setContent(question);
-            assistantMsg.setMessageIndex(assistantIndex);
-            messageMapper.insert(assistantMsg);
+            final String guideQuestion = question;
+            final String guideCategoryKey = categoryKey;
+            final AiSessionState guideSessionState = sessionState;
+            final Map<String, Object> guideStateMap = stateMap;
 
-            // 将 pending_profile_category 写入 stateJson
-            if (sessionState != null) {
-                try {
-                    stateMap.put("pending_profile_category", categoryKey);
-                    sessionState.setStateJson(objectMapper.writeValueAsString(stateMap));
-                    sessionStateMapper.update(sessionState);
-                } catch (Exception e) {
-                    log.warn("写入 pending_profile_category 失败: {}", e.getMessage());
+            // 事务只覆盖数据库写：引导消息落库 + 会话状态 + 会话时间戳
+            txTemplate.executeWithoutResult(status -> {
+                Integer newMaxIndex = messageMapper.selectMaxMessageIndex(conversationId);
+                int assistantIndex = (newMaxIndex != null ? newMaxIndex : 0) + 1;
+                AiMessage assistantMsg = new AiMessage();
+                assistantMsg.setConversationId(conversationId);
+                assistantMsg.setRole("assistant");
+                assistantMsg.setContent(guideQuestion);
+                assistantMsg.setMessageIndex(assistantIndex);
+                messageMapper.insert(assistantMsg);
+
+                // 将 pending_profile_category 写入 stateJson
+                if (guideSessionState != null) {
+                    try {
+                        guideStateMap.put("pending_profile_category", guideCategoryKey);
+                        guideSessionState.setStateJson(objectMapper.writeValueAsString(guideStateMap));
+                        sessionStateMapper.update(guideSessionState);
+                    } catch (Exception e) {
+                        log.warn("写入 pending_profile_category 失败: {}", e.getMessage());
+                    }
                 }
-            }
 
-            AiConversation conversation = conversationMapper.selectById(conversationId);
-            conversation.setLastMessageAt(LocalDateTime.now());
-            conversationMapper.update(conversation);
+                AiConversation conversation = conversationMapper.selectById(conversationId);
+                conversation.setLastMessageAt(LocalDateTime.now());
+                conversationMapper.update(conversation);
+            });
 
             log.info("画像引导: 用户 {} 缺失={}, pending_category={}, 返回选项", userId, category, categoryKey);
             return ChatResponse.builder()
@@ -509,7 +561,11 @@ public class AiConversationServiceImpl implements AiConversationService {
                     }
                 }
             }
-            case "error" -> failed[0] = true;
+            // Python 侧 LLM 闸门（LLM_MAX_CONCURRENCY）等待超时会下发 error 帧，这就是"LLM 限流"信号
+            case "error" -> {
+                failed[0] = true;
+                aiMetrics.incrementLlmThrottled();
+            }
             default -> log.debug("忽略未知 SSE 帧类型: {}", type);
         }
     }
@@ -604,43 +660,76 @@ public class AiConversationServiceImpl implements AiConversationService {
 
     /**
      * 共享收尾落库（同步 chat() 与流式 runChatStream 同源）。
-     * 同步端点原有逻辑：assistant 落库 → 会话状态 → 摘要 → AI 分类记忆(仅 chat) → 会话时间戳。
+     *
+     * <p>事务边界：只包住"纯数据库写"（assistant 落库 → 会话状态 → 会话时间戳）。
+     * 摘要与记忆保存都涉及远程 IO（LLM / embedding），必须放在事务外：
+     * 一是避免长时间占用数据库连接，二是它们只影响"下一次"对话，失败也不应回滚本次回答。
      */
     private void persistAiReply(Long conversationId, Long userId, String userMessage, String reply,
                                 String mode, List<TypedMemoryCandidate> typedCandidates) {
-        Integer newMaxIndex = messageMapper.selectMaxMessageIndex(conversationId);
-        int assistantIndex = (newMaxIndex != null ? newMaxIndex : 0) + 1;
+        txTemplate.executeWithoutResult(status -> {
+            Integer newMaxIndex = messageMapper.selectMaxMessageIndex(conversationId);
+            int assistantIndex = (newMaxIndex != null ? newMaxIndex : 0) + 1;
 
-        AiMessage assistantMsg = new AiMessage();
-        assistantMsg.setConversationId(conversationId);
-        assistantMsg.setRole("assistant");
-        assistantMsg.setContent(reply);
-        assistantMsg.setMessageIndex(assistantIndex);
-        messageMapper.insert(assistantMsg);
+            AiMessage assistantMsg = new AiMessage();
+            assistantMsg.setConversationId(conversationId);
+            assistantMsg.setRole("assistant");
+            assistantMsg.setContent(reply);
+            assistantMsg.setMessageIndex(assistantIndex);
+            messageMapper.insert(assistantMsg);
 
-        sessionStateService.updateSessionState(conversationId, userMessage, reply);
+            sessionStateService.updateSessionState(conversationId, userMessage, reply);
 
+            AiConversation conversation = conversationMapper.selectById(conversationId);
+            conversation.setLastMessageAt(LocalDateTime.now());
+            conversationMapper.update(conversation);
+        });
+
+        // ===== 以下任务只影响"下一次"对话：异步执行，让 done 帧不再等它们 =====
+        // （shouldCreateSummary 只是一条 COUNT，留在同步侧以避免提交无意义的任务）
         if (summaryService.shouldCreateSummary(conversationId)) {
-            summaryService.generateAndSaveSummary(conversationId);
+            asyncTasks.submitSummary(conversationId, () -> {
+                try {
+                    summaryService.generateAndSaveSummary(conversationId);
+                } catch (Exception e) {
+                    // 摘要失败绝不能影响本次对话（此时回复已落库）：若异常冒泡到上层会触发
+                    // "清理悬挂消息"，反而留下一条没有对应用户消息的 assistant 孤儿记录。
+                    log.warn("会话摘要生成失败，不影响本次对话: conversation={}, err={}",
+                            conversationId, e.getMessage());
+                }
+            });
         }
 
         // 记忆处理：仅 chat 模式用 AI 分类结果保存（constraint 保留最新；preference/goal 语义去重），strategy 跳过
-        if (!"strategy".equals(mode)) {
-            try {
-                if (typedCandidates != null && !typedCandidates.isEmpty()) {
-                    for (TypedMemoryCandidate candidate : typedCandidates) {
-                        memoryService.saveChatMemory(userId, candidate.getContent(), candidate.getMemoryType());
+        if (!"strategy".equals(mode) && typedCandidates != null && !typedCandidates.isEmpty()) {
+            for (TypedMemoryCandidate candidate : typedCandidates) {
+                String type = candidate.getMemoryType();
+                String content = candidate.getContent();
+                if ("constraint".equalsIgnoreCase(type)) {
+                    // ★ 风控/止损规则必须同步写入：用户刚说"止损 5%"，下一轮 AI 就得立刻知道，
+                    //   这类记忆延迟生效有真实业务风险，因此不进异步队列。
+                    try {
+                        memoryService.saveChatMemory(userId, content, type);
+                    } catch (Exception e) {
+                        log.warn("constraint 记忆保存失败，继续处理其余候选: userId={}, err={}",
+                                userId, e.getMessage());
                     }
-                    log.info("为用户 {} 保存 {} 条 AI 分类记忆", userId, typedCandidates.size());
+                } else {
+                    AiTaskPayloads.MemoryPersistTask payload = AiTaskPayloads.MemoryPersistTask.builder()
+                            .userId(userId)
+                            .content(content)
+                            .memoryType(type)
+                            .build();
+                    asyncTasks.submitMemory(payload, () -> {
+                        try {
+                            memoryService.saveChatMemory(userId, content, type);
+                        } catch (Exception e) {
+                            log.warn("记忆持久化异常，不影响对话结果: {}", e.getMessage());
+                        }
+                    });
                 }
-            } catch (Exception e) {
-                log.warn("记忆持久化异常，不影响对话结果: {}", e.getMessage());
             }
         }
-
-        AiConversation conversation = conversationMapper.selectById(conversationId);
-        conversation.setLastMessageAt(LocalDateTime.now());
-        conversationMapper.update(conversation);
     }
 
     private static class ChatContext {

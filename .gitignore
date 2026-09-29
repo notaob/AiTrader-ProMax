@@ -178,3 +178,13 @@ deploy.tar.gz
 deploy_log.txt
 rebuild*.txt
 check_images.py
+
+# 求职材料与本地工具产物
+INTERVIEW_STAR_SCRIPTS.md
+PROJECT_EXPERIENCE_STAR.md
+erl_crash.dump
+
+# 只保留 README，其余 md 一律不入库
+*.md
+!README.md
+!**/README.md

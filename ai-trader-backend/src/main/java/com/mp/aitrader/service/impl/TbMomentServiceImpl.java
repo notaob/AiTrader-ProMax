@@ -3,6 +3,7 @@ package com.mp.aitrader.service.impl;
 import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.mp.aitrader.DTO.CommentDTO;
 import com.mp.aitrader.DTO.MomentDTO;
@@ -45,17 +46,22 @@ public class TbMomentServiceImpl extends ServiceImpl<TbMomentMapper, TbMoment> i
     @Autowired
     private TbMomentCommentMapper momentCommentMapper;
 
+    /** 单页最大条数：防止调用方传入超大 size 造成全表扫描。 */
+    private static final int MAX_PAGE_SIZE = 50;
+
     @Override
     public Result<List<MomentVO>> getMomentList(int page, int size) {
         Long currentUserId = BaseContext.getCurrentId();
 
-        int offset = (page - 1) * size;
+        // 入参保底：避免 size 被传成极大值导致一次扫全表，也避免 page<=0 产生负偏移
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
 
-        // 分页查询动态，按时间倒序
-        QueryWrapper<TbMoment> queryWrapper = new QueryWrapper<>();
-        queryWrapper.orderByDesc("create_time")
-                    .last("LIMIT " + size + " OFFSET " + offset);
-        List<TbMoment> moments = momentMapper.selectList(queryWrapper);
+        // 分页插件（见 MybatisPlusConfig）会自动改写为 LIMIT 分页，无需手工拼接 SQL
+        Page<TbMoment> pageParam = new Page<>(safePage, safeSize);
+        Page<TbMoment> pageResult = momentMapper.selectPage(
+                pageParam, new QueryWrapper<TbMoment>().orderByDesc("create_time"));
+        List<TbMoment> moments = pageResult.getRecords();
 
         if (moments == null || moments.isEmpty()) {
             return Result.success(new ArrayList<>());

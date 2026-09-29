@@ -7,7 +7,7 @@
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 
-from app.config import config
+from app.llm import chat_model_kwargs, extract_llm_text
 from app.memory.memory_service import _strip_think_blocks
 
 SYSTEM_PROMPT = (
@@ -46,11 +46,10 @@ def summarize_conversation(messages: list[dict]) -> str:
         raise RuntimeError("无可摘要的消息内容")
 
     llm = ChatOpenAI(
-        model=config.DASHSCOPE_MODEL,
-        openai_api_key=config.DASHSCOPE_API_KEY,
-        openai_api_base=config.DASHSCOPE_BASE_URL,
+        **chat_model_kwargs(),
         temperature=0.0,
-        max_tokens=1200,
+        # 思考型模型思考 token 计入上限；1200 会被思考耗尽导致正文为空 → RuntimeError → 500
+        max_tokens=4096,
     )
     prompt = f"{SYSTEM_PROMPT}\n\n对话记录：\n{transcript}"
     try:
@@ -58,7 +57,7 @@ def summarize_conversation(messages: list[dict]) -> str:
     except Exception as e:  # noqa: BLE001
         raise RuntimeError(f"摘要生成失败: {e}") from e
 
-    summary = _strip_think_blocks(result.content if hasattr(result, "content") else str(result))
+    summary = _strip_think_blocks(extract_llm_text(result))
     if not summary:
         raise RuntimeError("摘要生成为空")
     return summary

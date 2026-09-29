@@ -5,10 +5,14 @@
 （依赖：后端 :8080、ai-agent :8000、campusmall 库与测试账号权限已就绪）
 """
 import hashlib
+import sys
 import time
 
 import httpx
 import pymysql
+
+# Windows 重定向 stdout 默认 GBK，LLM 回复含 emoji 时会 UnicodeEncodeError
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 EMAIL = "e2e.stage2@ai.local"
 PASSWORD = "E2ePass#2026"
@@ -69,8 +73,9 @@ def setup_user():
         cur.execute("delete from ai_conversations where user_id=%s", (uid,))
         cur.execute("delete from tb_user where id=%s", (uid,))
     now = time.strftime("%Y-%m-%d %H:%M:%S")
-    cur.execute("insert into tb_user(email,password,nick_name,create_time,update_time) "
-                "values(%s,%s,%s,%s,%s)", (EMAIL, md5(PASSWORD), "Stage2 E2E", now, now))
+    # ai_chance 需 ≥ 轮数（默认 0 会被配额闸门拦下）
+    cur.execute("insert into tb_user(email,password,nick_name,ai_chance,create_time,update_time) "
+                "values(%s,%s,%s,100,%s,%s)", (EMAIL, md5(PASSWORD), "Stage2 E2E", now, now))
     conn.commit()
     new_id = cur.lastrowid
     conn.close()
@@ -113,6 +118,18 @@ def main() -> int:
             log(f"[TURN {i:02d}] {time.time()-ts:.0f}s :: {reply[:80]}")
         log(f"总耗时 {time.time()-t0:.0f}s")
 
+        # T5 异步化后：preference/goal 记忆与摘要在 done 帧之后异步落库，等待其完成再核对 DB
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            poll = db_conn()
+            poll_cur = poll.cursor()
+            poll_cur.execute("select count(*) from ai_user_memories where user_id=%s", (user_id,))
+            n = poll_cur.fetchone()[0]
+            poll.close()
+            if n >= 3:                   # 偏好 + 目标 + 至少一条分类记忆
+                log(f"[ASYNC] 异步记忆已落库（{n} 条，等待 {60 - (deadline - time.time()):.0f}s）")
+                break
+            time.sleep(2)
         conn = db_conn()
         cur = conn.cursor()
         cur.execute("select memory_type,is_active,content from ai_user_memories "

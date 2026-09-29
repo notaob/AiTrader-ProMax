@@ -77,4 +77,21 @@ public interface AiUserMemoryMapper {
 
     @Update("UPDATE ai_user_memories SET is_active = 0, updated_at = NOW() WHERE user_id = #{userId} AND memory_type = #{memoryType} AND is_active = 1")
     int deactivateByType(@Param("userId") Long userId, @Param("memoryType") String memoryType);
+
+    /** 对账扫描用：按 id 游标分页取活跃记忆，避免一次载入全表。 */
+    @Select("SELECT * FROM ai_user_memories WHERE id > #{afterId} AND is_active = 1 ORDER BY id LIMIT #{limit}")
+    @Results({
+            @Result(property = "id", column = "id"),
+            @Result(property = "userId", column = "user_id"),
+            @Result(property = "memoryType", column = "memory_type"),
+            @Result(property = "content", column = "content"),
+            @Result(property = "importanceScore", column = "importance_score"),
+            @Result(property = "confidenceScore", column = "confidence_score"),
+            @Result(property = "source", column = "source"),
+            @Result(property = "isActive", column = "is_active"),
+            @Result(property = "lastUsedAt", column = "last_used_at"),
+            @Result(property = "createdAt", column = "created_at"),
+            @Result(property = "updatedAt", column = "updated_at")
+    })
+    List<AiUserMemory> selectActiveBatchAfterId(@Param("afterId") Long afterId, @Param("limit") int limit);
 }

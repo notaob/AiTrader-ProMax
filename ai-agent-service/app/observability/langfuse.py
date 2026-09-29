@@ -72,7 +72,7 @@ def make_run_config(*, session_id: str = "default", user_id: str = "", mode: str
     thread_id 使用 `session_id:毫秒时间戳` 保证每次 run 独立 checkpoint：
     当前会话历史由 Java 端全量回传（每次调用重建 messages），若 thread 恒定复用，
     operator.add 会把上一轮消息再叠加一遍。待 Python 端接管会话状态后，
-    可改为稳定 thread_id 并启用 interrupt（HITL），见 AI_PHASE3 Stage 1/3。
+    可改为稳定 thread_id 并启用 interrupt（HITL）。
     """
     thread_id = f"{session_id or 'default'}:{uuid.uuid4().hex[:8]}"
     run_config = {"configurable": {"thread_id": thread_id}}

@@ -4,6 +4,9 @@ import com.mp.aitrader.agent.client.LangGraphClient;
 import com.mp.aitrader.memory.domain.AiUserMemory;
 import com.mp.aitrader.memory.mapper.AiUserMemoryMapper;
 import com.mp.aitrader.memory.service.AiMemoryService;
+import com.mp.aitrader.task.AiTaskPublisher;
+import com.mp.aitrader.task.AiTaskRabbitConfig;
+import com.mp.aitrader.task.AiTaskPayloads;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -34,6 +37,9 @@ public class AiMemoryServiceImpl implements AiMemoryService {
 
     @Autowired
     private LangGraphClient langGraphClient;
+
+    @Autowired
+    private AiTaskPublisher taskPublisher;
 
     @Override
     public void extractMemory(Long userId, String userMessage, String aiResponse) {
@@ -273,18 +279,35 @@ public class AiMemoryServiceImpl implements AiMemoryService {
         item.put("user_id", userId);
         item.put("content", memory.getContent());
         item.put("memory_type", memory.getMemoryType());
-        boolean ok = langGraphClient.syncMemorySave(userId, Collections.singletonList(item));
-        if (!ok) {
-            log.warn("记忆向量同步失败，仅落库 MySQL: memoryId={}", memory.getId());
-        }
+        // 幂等：向量 doc id = memory_id，重复消费即覆盖写，因此"至少一次投递"是安全的。
+        // 开启 MQ 后失败会进死信队列可重放；未开启则走本地兜底（与原行为一致）。
+        AiTaskPayloads.VectorMemorySaveTask task = AiTaskPayloads.VectorMemorySaveTask.builder()
+                .userId(userId)
+                .memoryId(memory.getId())
+                .content(memory.getContent())
+                .memoryType(memory.getMemoryType())
+                .build();
+        taskPublisher.submit(AiTaskRabbitConfig.RK_VECTOR_SAVE, task, () -> {
+            boolean ok = langGraphClient.syncMemorySave(userId, Collections.singletonList(item));
+            if (!ok) {
+                log.warn("记忆向量同步失败，仅落库 MySQL: memoryId={}", memory.getId());
+            }
+        });
     }
 
     /** 记忆失效/清除时同步清理向量：优先 ids，其次按 memoryType，全空则清空该用户全部向量。 */
     private void syncVectorDelete(Long userId, List<Long> memoryIds, String memoryType) {
-        boolean ok = langGraphClient.syncMemoryDelete(userId, memoryIds, memoryType);
-        if (!ok) {
-            log.warn("记忆向量删除失败: userId={}, ids={}, type={}", userId, memoryIds, memoryType);
-        }
+        AiTaskPayloads.VectorMemoryDeleteTask task = AiTaskPayloads.VectorMemoryDeleteTask.builder()
+                .userId(userId)
+                .memoryIds(memoryIds)
+                .memoryType(memoryType)
+                .build();
+        taskPublisher.submit(AiTaskRabbitConfig.RK_VECTOR_DELETE, task, () -> {
+            boolean ok = langGraphClient.syncMemoryDelete(userId, memoryIds, memoryType);
+            if (!ok) {
+                log.warn("记忆向量删除失败: userId={}, ids={}, type={}", userId, memoryIds, memoryType);
+            }
+        });
     }
 
     private static String strValue(Object o) {

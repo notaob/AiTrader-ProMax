@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  agent-tests:
+    name: AI Agent (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-agent-service
+    env:
+      # pydantic-settings 必填项占位；测试均为离线桩实现，不发起真实调用
+      DASHSCOPE_API_KEY: ci-placeholder-key
+      DASHSCOPE_MODEL: ci-placeholder-model
+      REDIS_VECTOR_MODE: memory
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run tests
+        run: uv run pytest -q
+
+  backend-tests:
+    name: Backend (Java)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: campusmall
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PASSWORD: root
+      REDIS_PASSWORD: ""
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Install MySQL client
+        run: sudo apt-get update -q && sudo apt-get install -y -q default-mysql-client
+
+      - name: Init schema
+        run: |
+          mysql -h 127.0.0.1 -uroot -proot campusmall < ai-trader-backend/src/main/resources/schema.sql
+          mysql -h 127.0.0.1 -uroot -proot campusmall < ai-trader-backend/src/main/resources/schema-phase2.sql
+
+      # application.yaml 含本机密钥被 gitignore；CI 从占位符模板生成，
+      # 数据源连接信息由上方 MYSQL_* 环境变量注入
+      - name: Generate application.yaml from template
+        working-directory: ai-trader-backend/src/main/resources
+        run: cp application-example.yaml application.yaml
+
+      - name: Run tests
+        working-directory: ai-trader-backend
+        run: |
+          chmod +x mvnw
+          ./mvnw test

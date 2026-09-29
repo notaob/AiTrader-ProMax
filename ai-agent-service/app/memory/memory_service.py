@@ -103,14 +103,13 @@ def classify_user_message(user_message: str) -> dict | None:
     from langchain_core.messages import HumanMessage as _HumanMessage
     from langchain_openai import ChatOpenAI
 
-    from app.config import config
+    from app.llm import chat_model_kwargs, extract_llm_text
 
     llm = ChatOpenAI(
-        model=config.DASHSCOPE_MODEL,
-        openai_api_key=config.DASHSCOPE_API_KEY,
-        openai_api_base=config.DASHSCOPE_BASE_URL,
+        **chat_model_kwargs(),
         temperature=0,
-        max_tokens=256,
+        # 思考型模型的思考 token 计入 max_tokens：256 会在思考阶段耗尽，JSON 被截断
+        max_tokens=2048,
     )
 
     prompt = """你是一个记忆分类器。分析用户消息，判断是否包含以下信息之一：
@@ -128,7 +127,7 @@ def classify_user_message(user_message: str) -> dict | None:
 
     try:
         result = llm.invoke([_HumanMessage(content=prompt)])
-        text = result.content.strip()
+        text = extract_llm_text(result)
         # 去除推理模型的 <think>...</think> 标签（如 deepseek-v3/v4 等）
         text = _strip_think_blocks(text)
         # 提取 JSON（兼容 markdown code block）
@@ -139,7 +138,14 @@ def classify_user_message(user_message: str) -> dict | None:
         if brace_idx > 0:
             text = text[brace_idx:]
         import json
-        data = json.loads(text)
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            # 思考 token 截断导致的"尾部残缺 JSON"：回退到最后一个完整的 } 再试
+            last_brace = text.rfind("}")
+            if last_brace <= 0:
+                raise
+            data = json.loads(text[:last_brace + 1])
         mem_type = data.get("type", "none")
         content = data.get("content", "")
         if mem_type in ("preference", "goal", "constraint") and content:
