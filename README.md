@@ -1,5 +1,7 @@
 # AiTrader — AI 智能交易辅助平台
 
+[![CI](https://github.com/notaob/AiTrader-ProMax/actions/workflows/ci.yml/badge.svg)](https://github.com/notaob/AiTrader-ProMax/actions/workflows/ci.yml)
+
 面向投资场景的 AI 交易辅助平台：**实时行情 + AI 对话 + 语义记忆 + 知识检索 + 策略报告**。
 三端架构（React Web / Spring Boot / LangGraph Agent），并对外提供 **MCP 工具服务**，
 任何支持 MCP 的客户端（CodeBuddy、Claude Desktop、Cursor…）都可以直接调用本项目的行情与分析工具。
@@ -13,6 +15,7 @@
 
 - [架构总览](#架构总览)
 - [功能特性](#功能特性)
+- [后端工程：稳定性与并发治理](#后端工程稳定性与并发治理)
 - [技术栈](#技术栈)
 - [仓库结构](#仓库结构)
 - [快速开始](#快速开始)
@@ -80,6 +83,78 @@
 ### 可观测与评测
 - Langfuse 全链路 trace（session / user / mode 标签，缺 key 静默降级）；
 - pytest 评测体系三层量化（离线检索 recall@k / LLM-as-judge / format 合规），见[评测体系](#评测体系)。
+
+## 后端工程：稳定性与并发治理
+
+面向生产稳定性做的三处关键改造，均配有**可复现的自动化验证**：
+
+| 问题 | 根因 | 改造 |
+|---|---|---|
+| 数据库连接被 120s 的 LLM 调用长期占用 | `@Transactional` 包住整条对话链路，事务期间持续持有连接（HikariCP 默认池仅 10 → 少量并发即拖垮全部接口） | 事务边界收敛到"纯数据库写"，远程调用全程无事务（`TransactionTemplate` 精确控制边界） |
+| 并发下 AI 机会超扣 | 「select → 校验 → update」读-改-写，两个请求可同时读到余额 1 并双双通过校验 | 改为单条 `UPDATE ... WHERE ai_chance > 0`，以影响行数判定成败，天然并发安全 |
+| 异步请求下用户身份残留（越权隐患） | SSE 使请求进入 Servlet 异步模式，`afterCompletion` 不保证在设置 `ThreadLocal` 的同一线程执行，线程带着上一位用户的 id 回到线程池 | 身份显式传参、不跨异步边界；SSE 与匿名放行分支显式清理 |
+| SSE 线程与 LLM 并发无上限，易雪崩 | `newCachedThreadPool()` 无上限，单请求最长占线程 5 分钟（超时 300s），且三处超时配置互不一致 | 有界线程池 + `Semaphore` 并发闸门（超限返回 error 帧）；三处超时统一为 120s；Python 侧 `asyncio.Semaphore` 守住 LLM 出口 |
+| 用户要等后台任务才收到结束信号 | `persistAiReply` 位于 `sendDoneFrame` **之前**，里面串行跑 1 次 LLM 摘要 + 2~3 次 embedding | 摘要与 `preference`/`goal` 记忆改异步（记忆单线程串行以保证去重正确）；`constraint` 风控规则仍**同步**（下一轮就要生效，不能延迟） |
+| 向量同步失败被静默丢弃 | MySQL 落库成功后同步 HTTP 调 Python 写向量，失败只 `log.warn` → MySQL 有数据、Redis 无向量，**永久召回不到且无人知晓** | 改为 MQ 投递（幂等：doc id = MySQL 主键，重复消费即覆盖写）；失败进死信队列可重放；MQ 不可用时自动降级本地执行 |
+| 异步链路日志串不起来 | MDC 是 ThreadLocal，SSE 编排线程与 AI 后台线程池的日志**没有 traceId**，出问题时无法把同一次请求的日志捞出来 | 入口 Filter 生成 / 透传 traceId（`X-Trace-Id`），提交异步任务时显式传递 MDC，并透传给 Python Agent |
+| 会话列表每次进首页都打 DB | 高频读、低频结构变更的接口没有缓存 | Cache-Aside：空列表也缓存（防穿透）、TTL 带随机抖动（防雪崩）；只在新建 / 归档时失效（先更库、再删缓存） |
+| 系统在硬扛的信号只存在于日志里 | 闸门拒绝、LLM 限流、消息进死信、任务积压——出问题全靠人翻日志 | 收敛为 Micrometer 指标（`ai.chat.gate.rejected` / `ai.llm.throttled` / `ai.task.dlq{kind}` / `ai.task.queue.depth{kind}`），经 `/actuator/prometheus` 暴露，死信 &gt; 0 即应告警重放 |
+| 向量丢失的最后一层兜底缺失 | MQ 重试兜"投了但消费失败"，死信兜"反复失败"，但"消息根本没投出去"（降级本地执行时进程重启）无人能发现 | 向量对账：扫描 MySQL 活跃记忆，`EXISTS mem:doc:{id}` 判缺失 → 重投写入任务（doc id = 主键，幂等覆盖写）。手动入口 `POST /ai/reconcile/vector`，补投量进指标 |
+| 消息转换器装配缺陷（DLQ 实测抓出） | 默认 `SimpleMessageConverter` 不支持任务 payload 类型 → MQ 模式下每次 publish 失败、被降级逻辑静默吞掉，MQ 实际从未承载过消息 | 注册 `Jackson2JsonMessageConverter`（发布/消费共用）；并做全链路 DLQ 实测：杀 Python 后 10 条消息全部进死信零丢失，重放脚本（`scripts/replay_dlq.py`）恢复 10/10 |
+
+### 实测数据
+
+事务边界验证：连接池**压到 5**、LLM 调用 sleep 3s、**20 并发**：
+
+```
+[T1] 并发=20, LLM延迟=3000ms, 连接池=5 → 成功=20, LLM期间活跃连接=0,
+     LLM期间事务激活数=0, 总耗时=3154ms
+```
+
+即 20 个请求完全并行，远程调用期间**数据库连接占用为 0**。
+
+**对照实验**：把 `@Transactional` 加回 `chat()` 后同一测试立即失败 ——
+成功数 20 → **5**，总耗时 3154ms → **12171ms**（≈ 4 × LLM 延迟，正好是 20 个请求被 5 个连接串行成 4 批）。
+该测试确实能捕获回归，不是"跑通就算过"。
+
+身份残留同理：注释掉 Controller 里的 `BaseContext.removeCurrentId()` 后，
+`ThreadLocalCleanupTest` 立即失败（`expected: <null> but was: <123>`）。
+
+收尾任务异步化（把摘要换成 sleep 2s，观测 `chat()` 耗时）：
+
+```
+[T5] 摘要异步化：摘要延迟=2000ms → chat() 实际耗时=47ms
+[T5] 记忆分流：constraint 同步 / preference 异步 → chat() 实际耗时=2015ms
+```
+
+即用户几乎不必再等那些"只影响下一次对话"的后台任务。改回同步后数字变为
+**2036ms / 4017ms**，测试立即失败。
+
+20 轮端到端记忆评测（真实 LLM 链路）与 50 并发 SSE 压测（真实多用户）：
+
+```
+[T5] 20 轮对话：18/20 完整回复，4 条记忆分类全对（preference×2/goal/constraint），
+     滚动摘要 14 条；第 20 轮模型准确回忆第 2 轮埋入的事实（"长期持有的主流加密资产：BTC"）
+[T6] 50 并发 SSE：10 完成（闸门容量）+ 40 个 0.0s 快速拒绝（友好 error 帧）
+     + 0 挂起 + 0 异常，总耗时 55s；压测后服务健康
+```
+
+> 这两项实测还反向抓出并修复了三个真实缺陷：同步 LLM 调用阻塞 FastAPI 事件循环、
+> 摘要绕过 LLM 闸门、思考型模型（GLM-5.3）思考 token 挤占 max_tokens 导致空回复。
+
+运行方式：
+
+```bash
+cd ai-trader-backend
+mvn test -Dtest="AiChanceConcurrencyTest,TransactionBoundaryTest,ThreadLocalCleanupTest,SseConcurrencyGateTest,AsyncPersistTest,AiTaskPublisherTest,AiTaskConsumersTest,TraceIdTest,AiConversationCacheTest,AiMetricsTest,AiVectorReconcileTest"
+```
+
+> `ThreadLocalCleanupTest` 与 `SseConcurrencyGateTest` 是纯单元测试，**不需要 MySQL / Redis / Tomcat**；
+> 另外两个需要本机 MySQL（本组验证均不触碰 Redis）。
+> 四处改造均做过"反向验证"：把修复回退后对应测试立即失败，确保不是"跑绿了就算数"。
+
+> 排查记录：验证前若手工还原过源码，请用 `mvn clean test` 强制重建 ——
+> 文件复制会保留原时间戳，Maven 可能判定"无需重编译"而继续使用旧 class，导致测出假结果。
 
 ## 技术栈
 
