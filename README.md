@@ -184,7 +184,6 @@ mvn test -Dtest="AiChanceConcurrencyTest,TransactionBoundaryTest,ThreadLocalClea
 │   ├── tests/                # 常规单测 56 例 + MCP 集成（mark `mcp`）
 │   ├── evals/                # golden 数据 + 评测 harness（mark `evals`）
 │   └── Dockerfile / Dockerfile.mcp
-├── AI_PHASE3_LANGGRAPH_AGENT_EVAL.md   # Phase 3 完整计划与阶段留档
 └── README.md
 ```
 
@@ -311,8 +310,8 @@ golden 共 **78 条**（kb 检索 60 + judge 端到端 10 + format 策略报告 
 | LLM-as-judge 忠实度（10 题） | pass_rate=1.00；c/f/r/s = 4.70/4.40/4.80/5.00 | `uv run pytest -m judge` |
 | 策略报告 format 合规（8 条） | format_pass_rate=0.88 / chapter_complete=1.00 | `uv run pytest -m format` |
 
-评测曾真实抓出并驱动修复行情工具忽略 `symbol` 参数（问 ETH 报 BTC）的缺陷。明细见
-`ai-agent-service/README.md`「评测指标（Stage 4）」与 `AI_PHASE3_LANGGRAPH_AGENT_EVAL.md`。
+评测曾真实抓出并驱动修复行情工具忽略 `symbol` 参数（问 ETH 报 BTC）的缺陷，明细见
+`ai-agent-service/README.md`「评测指标（Stage 4）」。
 
 ## Docker 部署
 
@@ -353,9 +352,8 @@ Phase 0–5 全部完成（2026-09-04），详见各文档：
 
 | 文档 | 内容 |
 |---|---|
-| `AI_PHASE3_LANGGRAPH_AGENT_EVAL.md` | Phase 3 完整计划：Stage 0 基建 → 5 MCP，含指标、风险与逐阶段留档 |
 | `ai-agent-service/README.md` | Agent API、评测三层明细、MCP 章节、本地/容器启动 |
-| `ai-trader-backend` / `AiTrader` | Spring Boot / 前端工程（各含 Dockerfile） |
+| `ai-trader-backend` / `AiTrader` | Spring Boot / 前端工程（各含 Dockerfile 与独立 README） |
 
 里程碑速览：
 

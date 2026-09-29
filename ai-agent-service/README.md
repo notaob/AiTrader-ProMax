@@ -149,7 +149,7 @@ uv run pytest -m mcp -q        # 3 passed：list_tools 6 工具 + BTC 实时价 
 {"ok": true, "requested": "BTC", "symbol": "BTCUSDT", "price": 68123.45}
 ```
 
-工具核心抽共享层、MCP server、客户端验证的完整说明见 `AI_PHASE3_LANGGRAPH_AGENT_EVAL.md` Stage 5。
+工具核心抽共享层：core 只做 IO 与计算、返回结构化结果，LangChain 壳与 MCP server 各自做呈现适配，逻辑唯一实现不双写（测试锁定两种呈现的逐字一致性）。
 
 ## LangGraph 工作流
 
@@ -260,4 +260,4 @@ uv run python -m evals.format_compliance            # 全量
 uv run pytest -m format                             # pytest 入口
 ```
 
-说明：评测默认被排除在常规测试外（`pytest` 仅跑单元/冒烟；`-m evals` 全量，`-m offline`/`-m judge`/`-m format` 分项触发）。完整计划与阶段留档见 `AI_PHASE3_LANGGRAPH_AGENT_EVAL.md`。
+说明：评测默认被排除在常规测试外（`pytest` 仅跑单元/冒烟；`-m evals` 全量，`-m offline`/`-m judge`/`-m format` 分项触发）。
